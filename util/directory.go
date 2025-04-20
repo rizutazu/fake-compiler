@@ -1,4 +1,4 @@
-package dir
+package util
 
 import (
 	"errors"
@@ -11,8 +11,8 @@ import (
 
 // Directory stores information about file architecture
 //
-// This object is recommended to create by `New()`,
-// if the object is created by `New()`, it will not be valid or complete before calling `Traverse()`
+// This object is recommended to create by `NewDirectory()`,
+// if the object is created by `NewDirectory()`, it will not be valid or complete before calling `Traverse()`
 //
 // `Path` : the absolute or relative path of the directory
 //
@@ -24,6 +24,7 @@ type Directory struct {
 	SubDirs  []*Directory `json:"sub_dirs"`
 	Files    []File       `json:"files"`
 	Complete bool
+	Parent   *Directory // todo
 
 	isRoot         bool
 	filenameFilter *regexp.Regexp
@@ -32,11 +33,12 @@ type Directory struct {
 }
 
 type File struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
+	Parent *Directory // todo
+	Name   string     `json:"name"`
+	Size   int64      `json:"size"`
 }
 
-// New create a new `Directory` object, will not be valid before invoking `Traverse()`
+// NewDirectory create a new `Directory` object, will not be valid before invoking `Traverse()`
 //
 // Parameters:
 //
@@ -46,7 +48,7 @@ type File struct {
 //
 // ignoreEmptyDir: indicates whether ignore empty directories or directories without read permission,
 // affects `DumpToJson()` and `DumpToConfig()`, does not affect `String()`
-func New(path, filenameFilter string, ignoreEmptyDir bool) (*Directory, error) {
+func NewDirectory(path, filenameFilter string, ignoreEmptyDir bool) (*Directory, error) {
 	if len(path) == 0 {
 		return nil, errors.New("empty path")
 	}

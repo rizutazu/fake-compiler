@@ -1,33 +1,42 @@
-package fakedep
+package cxx
 
 import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"fake-compile/dir"
+	"fake-compile/util"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/golang-collections/collections/stack"
 )
 
+type SourceType uint16
+
+const SourceTypeDir SourceType = 114
+const SourceTypeConfig SourceType = 514
+
 // FakeCXXSource stores compile source path and information(size and name) of files within it
 type FakeCXXSource struct {
-	Path  string     `json:"path"`
-	Files []dir.File `json:"files"`
+	Path string `json:"path"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
 }
 
 // FakeCXXDependency stores array of FakeCXXSource, optionally constructs from a dir.Directory
 type FakeCXXDependency struct {
-	dir         *dir.Directory
 	constructed bool
 	sources     []*FakeCXXSource
+	targetName  string
 	cursor      int
 }
 
 type rawFakeCXXDepJson struct {
-	Type    string          `json:"type"`
-	Sources []FakeCXXSource `json:"sources"`
+	TargetName string          `json:"target_name"`
+	Sources    []FakeCXXSource `json:"sources"`
 }
 
 // NewFakeCXXDep creates a new FakeCXXDependency object
@@ -37,24 +46,24 @@ type rawFakeCXXDepJson struct {
 // path: directory path or configuration file path, its interpretation will be affected by `sourceType`
 //
 // sourceType: either "config" or "dir"
-func NewFakeCXXDep(path, sourceType string) (*FakeCXXDependency, error) {
+func NewFakeCXXDep(path string, sourceType SourceType) (*FakeCXXDependency, error) {
 
 	f := new(FakeCXXDependency)
 	f.constructed = false
 	f.cursor = 0
 	switch sourceType {
-	case "config":
+	case SourceTypeConfig:
 		err := f.parseConfig(path)
 		if err != nil {
 			return nil, err
 		}
-	case "dir":
+	case SourceTypeDir:
 		err := f.parseDirectory(path)
 		if err != nil {
 			return nil, err
 		}
 	default:
-		return nil, errors.New("unknown sourceType " + sourceType)
+		return nil, errors.New("unknown sourceType " + strconv.Itoa(int(sourceType)))
 	}
 
 	return f, nil
@@ -83,9 +92,6 @@ func (dep *FakeCXXDependency) parseConfig(configPath string) error {
 	if err != nil {
 		return err
 	}
-	if raw.Type != "cxx" {
-		return errors.New("not a cxx type config")
-	}
 	for _, src := range raw.Sources {
 		dep.sources = append(dep.sources, &src)
 	}
@@ -95,12 +101,43 @@ func (dep *FakeCXXDependency) parseConfig(configPath string) error {
 
 func (dep *FakeCXXDependency) parseDirectory(dirPath string) error {
 
-	d, err := dir.New(dirPath, "^.*\\.(c|cpp|S)$", true)
+	rootDir, err := util.NewDirectory(dirPath, "^.*\\.(c|cpp|S)$", true)
 	if err != nil {
 		return err
 	}
-	dep.dir = d
-	return dep.doConstruct()
+	if !rootDir.Complete {
+		err := rootDir.Traverse()
+		if err != nil {
+			return err
+		}
+	}
+
+	dep.targetName = filepath.Base(dirPath)
+
+	// https://stackoverflow.com/questions/4664050/iterative-depth-first-tree-traversal-with-pre-and-post-visit-at-each-node
+	pre := stack.New()
+	post := stack.New()
+	pre.Push(rootDir)
+	for pre.Len() > 0 {
+		d := pre.Pop().(*util.Directory)
+		post.Push(d)
+		for _, subDir := range d.SubDirs {
+			pre.Push(subDir)
+		}
+	}
+	for post.Len() > 0 {
+		d := post.Pop().(*util.Directory)
+		for _, file := range d.Files {
+			src := new(FakeCXXSource)
+			src.Path, _ = strings.CutPrefix(d.Path, dirPath)
+			src.Name = file.Name
+			src.Size = file.Size
+			dep.sources = append(dep.sources, src)
+		}
+	}
+	dep.constructed = true
+	return nil
+
 }
 
 func (dep *FakeCXXDependency) Next() (*FakeCXXSource, error) {
@@ -116,54 +153,9 @@ func (dep *FakeCXXDependency) Next() (*FakeCXXSource, error) {
 	}
 }
 
-//func (dep *FakeCXXDependency) Unwind() {
-//
-//	dep.cursor = 0
-//}
-
 func (dep *FakeCXXDependency) Len() int {
 
-	sum := 0
-	for _, src := range dep.sources {
-		sum += len(src.Files)
-	}
-	return sum
-}
-
-func (dep *FakeCXXDependency) doConstruct() error {
-
-	if dep.dir == nil {
-		return errors.New("no source directory provided")
-	}
-	if !dep.dir.Complete {
-		err := dep.dir.Traverse()
-		if err != nil {
-			return err
-		}
-	}
-
-	// https://stackoverflow.com/questions/4664050/iterative-depth-first-tree-traversal-with-pre-and-post-visit-at-each-node
-	pre := stack.New()
-	post := stack.New()
-	pre.Push(dep.dir)
-	for pre.Len() > 0 {
-		d := pre.Pop().(*dir.Directory)
-		post.Push(d)
-		for _, subDir := range d.SubDirs {
-			pre.Push(subDir)
-		}
-	}
-	for post.Len() > 0 {
-		d := post.Pop().(*dir.Directory)
-		if len(d.Files) > 0 {
-			src := new(FakeCXXSource)
-			src.Path = d.Path
-			src.Files = d.Files
-			dep.sources = append(dep.sources, src)
-		}
-	}
-	dep.constructed = true
-	return nil
+	return len(dep.sources)
 }
 
 func (dep *FakeCXXDependency) DumpConfig(configPath string) error {
@@ -173,7 +165,7 @@ func (dep *FakeCXXDependency) DumpConfig(configPath string) error {
 	}
 
 	r := new(rawFakeCXXDepJson)
-	r.Type = "cxx"
+	r.TargetName = dep.targetName
 	for _, src := range dep.sources {
 		r.Sources = append(r.Sources, *src)
 	}

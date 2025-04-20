@@ -1,9 +1,8 @@
 package main
 
 import (
-	"fake-compile/fakecompiler"
-	"fake-compile/fakedep"
-	"fmt"
+	"fake-compile/cxx"
+	"fake-compile/util"
 	"log"
 	"os"
 )
@@ -20,40 +19,16 @@ func main() {
 		path = os.Args[1]
 	}
 
-	//timeCalc(path)
-
-	c, err := fakecompiler.NewFakeCXXCompiler(path, "dir")
+	path, err := util.FormatPath(path)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	c, err := cxx.NewFakeCXXCompiler(path, cxx.SourceTypeDir)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	c.Run()
 
-	//dep, err := dir.New(path, "", true)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//dep.Traverse()
-	//// dep.DumpToJson("geeeee.json")
-	//// dep.DumpToConfig("aaa")
-	//
-	//fmt.Println("first")
-	//fmt.Println(dep)
-	//
-	//// parse()
-}
-
-func timeCalc(path string) {
-	dep, _ := fakedep.NewFakeCXXDep(path, "dir")
-	sum := int64(0)
-	count := dep.Len()
-	for {
-		src, err := dep.Next()
-		if err != nil {
-			break
-		}
-		for _, file := range src.Files {
-			sum += file.Size
-		}
-	}
-	fmt.Printf("count: %v, sum: %v\n", count, sum)
 }
