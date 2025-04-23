@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/spf13/cobra"
 	"log"
+
+	"github.com/spf13/cobra"
 )
 
 // exclusive:
@@ -10,10 +11,10 @@ import (
 // run -d dirPath
 
 // persistent:
-// run -t threads -C compilerType -p progressbar
+// run -t threads -C compiler -p progressbar
 
 // persistent:
-// gen -C compilerType -d dirPath -o output path
+// gen -C compiler -d dirPath -o output path
 
 var configPath string
 var dirPath string

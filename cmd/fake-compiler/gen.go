@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
+
 	cc "github.com/rizutazu/fake-compiler/compiler"
 	"github.com/rizutazu/fake-compiler/util"
 	"github.com/spf13/cobra"
-	"log"
-	"os"
 )
 
 var genCmd = &cobra.Command{
@@ -42,7 +43,7 @@ func init() {
 	genCmd.Flags().StringVarP(&compilerType, "compiler", "C", "", "specified compiler type")
 	genCmd.Flags().StringVarP(&dirPath, "dir", "d", "", "path of directory to compile")
 	genCmd.Flags().StringVarP(&outputPath, "output", "o", "", "config file output path")
-	_ = genCmd.MarkFlagRequired("compilerType")
+	_ = genCmd.MarkFlagRequired("compiler")
 	_ = genCmd.MarkFlagRequired("dir")
 	_ = genCmd.MarkFlagRequired("output")
 }

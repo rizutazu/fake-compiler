@@ -2,10 +2,11 @@ package compiler
 
 import (
 	"errors"
-	"github.com/rizutazu/fake-compiler/progressbar"
-	"github.com/rizutazu/fake-compiler/util"
 	"sync"
 	"time"
+
+	"github.com/rizutazu/fake-compiler/progressbar"
+	"github.com/rizutazu/fake-compiler/util"
 )
 
 type CXXCompiler struct {
@@ -87,13 +88,13 @@ func (compiler *CXXCompiler) Run() {
 	// CXXCompiler
 	// start worker/commit handle goroutines
 	// then,
-	// main thread: issue tasks --> chan taskIssue --> worker goroutines: finish compile
-	//		|						A										|
-	//		|						|										V
-	//	 	|						|	commit handle goroutine <-- chan taskCommit	<--------┐
-	//		V						|														 |
-	// wait all tasks finish --> terminate: close chan --------------------------------------┘
-
+	// main thread: issue tasks ──> chan taskIssue ──> worker goroutines: finish compile
+	//      │                             A                                 │
+	//      │                             ║                                 V
+	//      │                             ║                      chan taskCommit ──> commit handle goroutine
+	//      V                             ║                               A
+	// wait all tasks finish ──> terminate: close chan                    ║
+	//                                     ╚══════════════════════════════╝
 	compiler.taskIssue = make(chan *cxxSource)
 	compiler.commit = make(chan *cxxSource)
 	compiler.wg = new(sync.WaitGroup)
@@ -101,7 +102,7 @@ func (compiler *CXXCompiler) Run() {
 	compiler.bar = progressbar.NewCMakeProgressBar(compiler.dependency.targetName)
 	compiler.bar.SetTotalTaskCount(compiler.dependency.len())
 
-	for i := 0; i < compiler.threads; i++ {
+	for range compiler.threads {
 		go compiler.workerRun()
 	}
 	go compiler.handleCommit()
