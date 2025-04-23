@@ -1,10 +1,11 @@
-package cxx
+package compiler
 
 import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"fake-compile/util"
+	"fmt"
+	"github.com/rizutazu/fake-compiler/util"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,41 +15,30 @@ import (
 	"github.com/golang-collections/collections/stack"
 )
 
-type SourceType uint16
-
-const SourceTypeDir SourceType = 114
-const SourceTypeConfig SourceType = 514
-
-// FakeCXXSource stores compile source path and information(size and name) of files within it
-type FakeCXXSource struct {
+// cxxSource stores compile source path and information(size and name) of files within it
+type cxxSource struct {
 	Path string `json:"path"`
 	Name string `json:"name"`
 	Size int64  `json:"size"`
 }
 
-// FakeCXXDependency stores array of FakeCXXSource, optionally constructs from a dir.Directory
-type FakeCXXDependency struct {
+// cxxDependency stores array of cxxSource, optionally constructs from a dir.Directory
+type cxxDependency struct {
 	constructed bool
-	sources     []*FakeCXXSource
+	sources     []*cxxSource
 	targetName  string
 	cursor      int
 }
 
 type rawFakeCXXDepJson struct {
-	TargetName string          `json:"target_name"`
-	Sources    []FakeCXXSource `json:"sources"`
+	Magic      string      `json:"magic"`
+	TargetName string      `json:"target_name"`
+	Sources    []cxxSource `json:"sources"`
 }
 
-// NewFakeCXXDep creates a new FakeCXXDependency object
-//
-// Parameters:
-//
-// path: directory path or configuration file path, its interpretation will be affected by `sourceType`
-//
-// sourceType: either "config" or "dir"
-func NewFakeCXXDep(path string, sourceType SourceType) (*FakeCXXDependency, error) {
+func newCXXDep(path string, sourceType SourceType) (*cxxDependency, error) {
 
-	f := new(FakeCXXDependency)
+	f := new(cxxDependency)
 	f.constructed = false
 	f.cursor = 0
 	switch sourceType {
@@ -69,9 +59,9 @@ func NewFakeCXXDep(path string, sourceType SourceType) (*FakeCXXDependency, erro
 	return f, nil
 }
 
-func (dep *FakeCXXDependency) parseConfig(configPath string) error {
+func (dep *cxxDependency) parseConfig(path string) error {
 
-	f, err := os.Open(configPath)
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
@@ -92,6 +82,9 @@ func (dep *FakeCXXDependency) parseConfig(configPath string) error {
 	if err != nil {
 		return err
 	}
+	if raw.Magic != "cxx" {
+		return fmt.Errorf("magic not match: %s is not a CXX config", path)
+	}
 	for _, src := range raw.Sources {
 		dep.sources = append(dep.sources, &src)
 	}
@@ -99,9 +92,9 @@ func (dep *FakeCXXDependency) parseConfig(configPath string) error {
 	return nil
 }
 
-func (dep *FakeCXXDependency) parseDirectory(dirPath string) error {
+func (dep *cxxDependency) parseDirectory(path string) error {
 
-	rootDir, err := util.NewDirectory(dirPath, "^.*\\.(c|cpp|S)$", true)
+	rootDir, err := util.NewDirectory(path, "^.*\\.(c|cpp|S)$", true)
 	if err != nil {
 		return err
 	}
@@ -112,7 +105,7 @@ func (dep *FakeCXXDependency) parseDirectory(dirPath string) error {
 		}
 	}
 
-	dep.targetName = filepath.Base(dirPath)
+	dep.targetName = filepath.Base(path)
 
 	// https://stackoverflow.com/questions/4664050/iterative-depth-first-tree-traversal-with-pre-and-post-visit-at-each-node
 	pre := stack.New()
@@ -128,8 +121,8 @@ func (dep *FakeCXXDependency) parseDirectory(dirPath string) error {
 	for post.Len() > 0 {
 		d := post.Pop().(*util.Directory)
 		for _, file := range d.Files {
-			src := new(FakeCXXSource)
-			src.Path, _ = strings.CutPrefix(d.Path, dirPath)
+			src := new(cxxSource)
+			src.Path, _ = strings.CutPrefix(d.Path, path)
 			src.Name = file.Name
 			src.Size = file.Size
 			dep.sources = append(dep.sources, src)
@@ -140,7 +133,7 @@ func (dep *FakeCXXDependency) parseDirectory(dirPath string) error {
 
 }
 
-func (dep *FakeCXXDependency) Next() (*FakeCXXSource, error) {
+func (dep *cxxDependency) next() (*cxxSource, error) {
 
 	if !dep.constructed {
 		return nil, errors.New("dependency not constructed")
@@ -153,18 +146,19 @@ func (dep *FakeCXXDependency) Next() (*FakeCXXSource, error) {
 	}
 }
 
-func (dep *FakeCXXDependency) Len() int {
+func (dep *cxxDependency) len() int {
 
 	return len(dep.sources)
 }
 
-func (dep *FakeCXXDependency) DumpConfig(configPath string) error {
+func (dep *cxxDependency) dumpConfig(path string) error {
 
 	if !dep.constructed {
 		return errors.New("not constructed")
 	}
 
 	r := new(rawFakeCXXDepJson)
+	r.Magic = "cxx"
 	r.TargetName = dep.targetName
 	for _, src := range dep.sources {
 		r.Sources = append(r.Sources, *src)
@@ -174,7 +168,7 @@ func (dep *FakeCXXDependency) DumpConfig(configPath string) error {
 		return err
 	}
 
-	f, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}

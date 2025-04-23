@@ -1,8 +1,8 @@
 package progressbar
 
 import (
-	"fake-compile/util"
 	"fmt"
+	"github.com/rizutazu/fake-compiler/util"
 	"strings"
 	"sync"
 	"time"
@@ -23,14 +23,17 @@ func (bar *cmakeProgressBar) SetTotalTaskCount(count int) {
 func (bar *cmakeProgressBar) TaskStart(taskName string) {
 	bar.lock.Lock()
 	bar.onGoingTasks[taskName] = true
+	bar.finishedTaskCount++ // add count before TaskComplete so that it won't look ugly
 	fin := bar.finishedTaskCount
+	if fin == bar.totalTaskCount { // should not print 100% before epilogue
+		fin -= 1
+	}
 	bar.lock.Unlock()
 	fmt.Printf("[%3v%%] \u001B[32mBuilding CXX object %s.o\u001B[0m\n", fin*100/bar.totalTaskCount, taskName)
 }
 
 func (bar *cmakeProgressBar) TaskComplete(taskName string) {
 	bar.lock.Lock()
-	bar.finishedTaskCount++
 	delete(bar.onGoingTasks, taskName)
 	bar.lock.Unlock()
 }
@@ -59,6 +62,8 @@ func (bar *cmakeProgressBar) Prologue() {
 		time.Sleep(time.Millisecond * time.Duration(t))
 		fmt.Println(line)
 	}
+
+	time.Sleep(time.Millisecond * 420)
 
 }
 
