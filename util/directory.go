@@ -12,7 +12,7 @@ import (
 // Directory stores information about file architecture
 //
 // This object is recommended to create by `NewDirectory()`,
-// if the object is created by `NewDirectory()`, it will not be valid or complete before calling `Traverse()`
+// if the object is created by `NewDirectory()`, it will not be valid and Complete == false before calling `Traverse()`
 //
 // `Path` : the absolute or relative path of the directory
 //
@@ -24,7 +24,7 @@ type Directory struct {
 	SubDirs  []*Directory `json:"sub_dirs"`
 	Files    []File       `json:"files"`
 	Complete bool
-	Parent   *Directory // todo
+	//Parent   *Directory // todo
 
 	isRoot         bool
 	filenameFilter *regexp.Regexp
@@ -33,9 +33,9 @@ type Directory struct {
 }
 
 type File struct {
-	Parent *Directory // todo
-	Name   string     `json:"name"`
-	Size   int64      `json:"size"`
+	//Parent *Directory // todo
+	Name string `json:"name"`
+	Size int64  `json:"size"`
 }
 
 // NewDirectory create a new `Directory` object, will not be valid before invoking `Traverse()`
@@ -47,10 +47,9 @@ type File struct {
 // filenameFilter: regex expression to filter when `Traverse()` , filename that does not match it will be ignored
 //
 // ignoreEmptyDir: indicates whether ignore empty directories or directories without read permission,
-// affects `DumpToJson()` and `DumpToConfig()`, does not affect `String()`
 func NewDirectory(path, filenameFilter string, ignoreEmptyDir bool) (*Directory, error) {
 	if len(path) == 0 {
-		return nil, errors.New("empty path")
+		return nil, errors.New("NewDirectory: empty path")
 	}
 
 	var filter *regexp.Regexp
@@ -157,16 +156,6 @@ func (directory *Directory) String() string {
 	s := strings.Builder{}
 	fileCount := len(directory.Files)
 	subDirCount := len(directory.SubDirs)
-
-	// if directory.ignoreEmptyDir {
-	// 	if !directory.canRead || (fileCount == 0 && subDirCount == 0) {
-	// 		return ""
-	// 	}
-	// 	for _, subDir := range directory.subDirs {
-	// 		if !subDir.canRead || (len(subDir.files) == 0 && len(subDir.files) == 0) {
-	// 		}
-	// 	}
-	// }
 
 	// write directory name without newline
 	if directory.isRoot {

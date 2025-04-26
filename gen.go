@@ -5,8 +5,6 @@ import (
 	"log"
 	"os"
 
-	cc "github.com/rizutazu/fake-compiler/compiler"
-	"github.com/rizutazu/fake-compiler/util"
 	"github.com/spf13/cobra"
 )
 
@@ -16,21 +14,11 @@ var genCmd = &cobra.Command{
 	Long: `iterate through given directory by given compiler type, and then generate corresponding config file, which 
 can be used for generating fake compile logs, so that the directory is no longer needed`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var c cc.Compiler
-		dirPath, err := util.FormatPath(dirPath)
+		compiler, err := parseCmd()
 		if err != nil {
 			log.Fatal(err)
 		}
-		switch compilerType {
-		case "cxx":
-			c, err = cc.NewCXXCompiler(dirPath, cc.SourceTypeDir, 1)
-			if err != nil {
-				log.Fatal(err)
-			}
-		default:
-			log.Fatalf("unknown compiler type %s\n", compilerType)
-		}
-		err = c.DumpConfig(outputPath)
+		err = compiler.DumpConfig(outputPath)
 		if err != nil {
 			log.Fatal(err)
 		}

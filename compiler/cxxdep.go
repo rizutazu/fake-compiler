@@ -1,16 +1,13 @@
 package compiler
 
 import (
-	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/rizutazu/fake-compiler/util"
-	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/rizutazu/fake-compiler/util"
 
 	"github.com/golang-collections/collections/stack"
 )
@@ -31,19 +28,18 @@ type cxxDependency struct {
 }
 
 type rawFakeCXXDepJson struct {
-	Magic      string      `json:"magic"`
 	TargetName string      `json:"target_name"`
 	Sources    []cxxSource `json:"sources"`
 }
 
-func newCXXDep(path string, sourceType SourceType) (*cxxDependency, error) {
+func newCXXDep(path string, config *util.Config, sourceType SourceType) (*cxxDependency, error) {
 
 	f := new(cxxDependency)
 	f.constructed = false
 	f.cursor = 0
 	switch sourceType {
 	case SourceTypeConfig:
-		err := f.parseConfig(path)
+		err := f.parseConfig(config)
 		if err != nil {
 			return nil, err
 		}
@@ -53,38 +49,23 @@ func newCXXDep(path string, sourceType SourceType) (*cxxDependency, error) {
 			return nil, err
 		}
 	default:
-		return nil, errors.New("unknown sourceType " + strconv.Itoa(int(sourceType)))
+		return nil, errors.New("cxxDep: unknown sourceType " + strconv.Itoa(int(sourceType)))
 	}
 
 	return f, nil
 }
 
-func (dep *cxxDependency) parseConfig(path string) error {
-
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	r, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return err
+func (dep *cxxDependency) parseConfig(config *util.Config) error {
+	if config == nil {
+		return errors.New("cxxDep: config is nil")
 	}
 	raw := new(rawFakeCXXDepJson)
-	err = json.Unmarshal(b, raw)
+	err := json.Unmarshal(config.UncompressedContent, raw)
 	if err != nil {
 		return err
 	}
-	if raw.Magic != "cxx" {
-		return fmt.Errorf("magic not match: %s is not a CXX config", path)
-	}
+
+	dep.targetName = raw.TargetName
 	for _, src := range raw.Sources {
 		dep.sources = append(dep.sources, &src)
 	}
@@ -136,13 +117,13 @@ func (dep *cxxDependency) parseDirectory(path string) error {
 func (dep *cxxDependency) next() (*cxxSource, error) {
 
 	if !dep.constructed {
-		return nil, errors.New("dependency not constructed")
+		return nil, errors.New("cxxDep: dependency not constructed")
 	}
 	if dep.cursor < len(dep.sources) {
 		dep.cursor++
 		return dep.sources[dep.cursor-1], nil
 	} else {
-		return nil, errors.New("no more sources")
+		return nil, errors.New("cxxDep: no more sources")
 	}
 }
 
@@ -151,32 +132,21 @@ func (dep *cxxDependency) len() int {
 	return len(dep.sources)
 }
 
-func (dep *cxxDependency) dumpConfig(path string) error {
+func (dep *cxxDependency) dumpConfig() ([]byte, error) {
 
 	if !dep.constructed {
-		return errors.New("not constructed")
+		return nil, errors.New("cxxDep: not constructed")
 	}
 
 	r := new(rawFakeCXXDepJson)
-	r.Magic = "cxx"
 	r.TargetName = dep.targetName
 	for _, src := range dep.sources {
 		r.Sources = append(r.Sources, *src)
 	}
 	data, err := json.Marshal(r)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	w := gzip.NewWriter(f)
-	defer w.Close()
-	_, err = w.Write(data)
-
-	return err
+	return data, err
 }

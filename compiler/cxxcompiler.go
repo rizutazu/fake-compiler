@@ -2,11 +2,10 @@ package compiler
 
 import (
 	"errors"
-	"sync"
-	"time"
-
 	"github.com/rizutazu/fake-compiler/progressbar"
 	"github.com/rizutazu/fake-compiler/util"
+	"sync"
+	"time"
 )
 
 type CXXCompiler struct {
@@ -21,11 +20,11 @@ type CXXCompiler struct {
 	bar progressbar.ProgressBar
 }
 
-func NewCXXCompiler(path string, sourceType SourceType, threads int) (*CXXCompiler, error) {
+func NewCXXCompiler(path string, config *util.Config, sourceType SourceType, threads int) (*CXXCompiler, error) {
 	if threads <= 0 {
-		return nil, errors.New("threads should be a positive number")
+		return nil, errors.New("CXXCompiler: threads should be a positive number")
 	}
-	dep, err := newCXXDep(path, sourceType)
+	dep, err := newCXXDep(path, config, sourceType)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +56,7 @@ func (compiler *CXXCompiler) workerRun() {
 	for {
 		source, ok := <-compiler.taskIssue
 		if !ok {
-			return
+			break
 		}
 		compiler.bar.TaskStart(source.Path + "/" + source.Name)
 		compileCode(source)
@@ -70,10 +69,10 @@ func compileCode(source *cxxSource) {
 	//time.Sleep(time.Millisecond)
 	//return
 
-	overhead := int(util.GetRandomNormalDistribution()*42 + 42*4.2)
+	overhead := int(util.GetRandomFromDistribution(42*4.2, 42))
 	overhead = max(overhead, 10)
 
-	compileTime := int(util.GetRandomNormalDistribution()*4.2 + float64(source.Size)/10)
+	compileTime := int(util.GetRandomFromDistribution(float64(source.Size)/10, 4.2))
 	compileTime = max(compileTime, 42)
 
 	//fmt.Printf("%v, %v\n", overhead, compileTime)
@@ -126,5 +125,13 @@ func (compiler *CXXCompiler) Run() {
 }
 
 func (compiler *CXXCompiler) DumpConfig(path string) error {
-	return compiler.dependency.dumpConfig(path)
+	uncompressedContent, err := compiler.dependency.dumpConfig()
+	if err != nil {
+		return err
+	}
+	err = util.DumpConfigFile(path, []byte("cxx"), uncompressedContent)
+	if err != nil {
+		return err
+	}
+	return nil
 }

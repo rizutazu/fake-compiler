@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 )
 
+func GetRandomFromDistribution(mean, sd float64) float64 {
+	return GetRandomNormalDistribution()*sd + mean
+}
+
 func GetRandomNormalDistribution() float64 {
 	r1 := rand.Float64()
 	r2 := rand.Float64()
