@@ -29,3 +29,11 @@ func FormatPath(path string) (string, error) {
 	}
 	return s, nil
 }
+
+func Sum(slice []int) (result int) {
+	result = 0
+	for _, v := range slice {
+		result += v
+	}
+	return
+}

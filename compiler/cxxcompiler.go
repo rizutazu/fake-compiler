@@ -2,10 +2,11 @@ package compiler
 
 import (
 	"errors"
-	"github.com/rizutazu/fake-compiler/progressbar"
-	"github.com/rizutazu/fake-compiler/util"
 	"sync"
 	"time"
+
+	"github.com/rizutazu/fake-compiler/progressbar"
+	"github.com/rizutazu/fake-compiler/util"
 )
 
 type CXXCompiler struct {

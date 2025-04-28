@@ -1,9 +1,10 @@
 package main
 
 import (
+	"log"
+
 	cc "github.com/rizutazu/fake-compiler/compiler"
 	"github.com/rizutazu/fake-compiler/util"
-	"log"
 
 	"github.com/spf13/cobra"
 )

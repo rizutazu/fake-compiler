@@ -2,10 +2,11 @@ package progressbar
 
 import (
 	"fmt"
-	"github.com/rizutazu/fake-compiler/util"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rizutazu/fake-compiler/util"
 )
 
 type cmakeProgressBar struct {
@@ -51,19 +52,28 @@ func (bar *cmakeProgressBar) Prologue() {
 -- Check for working CXX compiler: /usr/bin/c++ - skipped
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
--- Configuring done (0.0s)
+-- Configuring done (%.1fs)
 -- Generating done (0.0s)`
 
-	lines := strings.SplitSeq(_lines, "\n")
+	lines := strings.Split(_lines, "\n")
 
-	for line := range lines {
-		t := int(util.GetRandomNormalDistribution()*4 + 10)
-		t = max(20, min(t, 0))
-		time.Sleep(time.Millisecond * time.Duration(t))
-		fmt.Println(line)
+	sleepTimes := make([]int, len(lines))
+	for i := range len(lines) {
+		t := int(util.GetRandomFromDistribution(420/4.2, 42))
+		t = max(t, 0)
+		sleepTimes[i] = t
 	}
 
-	time.Sleep(time.Millisecond * 420)
+	for i, line := range lines {
+		time.Sleep(time.Millisecond * time.Duration(sleepTimes[i]))
+		if i == len(lines)-2 {
+			fmt.Printf(line+"\n", float64(util.Sum(sleepTimes[:i]))/1000)
+		} else {
+			fmt.Println(line)
+		}
+	}
+
+	time.Sleep(time.Millisecond * 420 * 2)
 
 }
 
