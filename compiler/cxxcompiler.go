@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -31,6 +32,9 @@ func NewCXXCompiler(path string, config *util.Config, sourceType SourceType, thr
 	}
 	return &CXXCompiler{
 		dependency: dep,
+		taskIssue:  make(chan *cxxSource),
+		commit:     make(chan *cxxSource),
+		wg:         new(sync.WaitGroup),
 		threads:    threads,
 	}, nil
 }
@@ -47,7 +51,13 @@ func (compiler *CXXCompiler) handleCommit() {
 		if !ok {
 			break
 		}
-		compiler.bar.TaskComplete(source.Path + "/" + source.Name)
+		_, ok = compiler.bar.(*progressbar.CmakeProgressBar)
+		if ok {
+			compiler.bar.TaskComplete(source.Path + "/" + source.Name + ".o")
+		} else {
+			compiler.bar.TaskComplete(source.Name)
+		}
+
 		compiler.wg.Done()
 	}
 }
@@ -59,13 +69,18 @@ func (compiler *CXXCompiler) workerRun() {
 		if !ok {
 			break
 		}
-		compiler.bar.TaskStart(source.Path + "/" + source.Name)
-		compileCode(source)
+		_, ok = compiler.bar.(*progressbar.CmakeProgressBar)
+		if ok {
+			compiler.bar.TaskStart(source.Path + "/" + source.Name + ".o")
+		} else {
+			compiler.bar.TaskStart(source.Name)
+		}
+		compiler.compileCode(source)
 		compiler.commit <- source
 	}
 }
 
-func compileCode(source *cxxSource) {
+func (compiler *CXXCompiler) compileCode(source *cxxSource) {
 
 	//time.Sleep(time.Millisecond)
 	//return
@@ -95,12 +110,10 @@ func (compiler *CXXCompiler) Run() {
 	//      V                             ║                               A
 	// wait all tasks finish ──> terminate: close chan                    ║
 	//                                     ╚══════════════════════════════╝
-	compiler.taskIssue = make(chan *cxxSource)
-	compiler.commit = make(chan *cxxSource)
-	compiler.wg = new(sync.WaitGroup)
 
-	compiler.bar = progressbar.NewCMakeProgressBar(compiler.dependency.targetName)
-	compiler.bar.SetTotalTaskCount(compiler.dependency.len())
+	bar := progressbar.NewCMakeProgressBar(compiler.getTargetName())
+	bar.SetTotalTasks(compiler.getTotalTasks())
+	compiler.bar = bar
 
 	for range compiler.threads {
 		go compiler.workerRun()
@@ -112,6 +125,9 @@ func (compiler *CXXCompiler) Run() {
 	for {
 		source, err := compiler.dependency.next()
 		if err != nil {
+			if !errors.Is(err, errEOF) {
+				log.Fatal(err)
+			}
 			break
 		}
 		compiler.issue(source)
@@ -123,6 +139,18 @@ func (compiler *CXXCompiler) Run() {
 	close(compiler.commit)    // exit handleCommit thread
 
 	compiler.bar.Epilogue()
+}
+
+func (compiler *CXXCompiler) getTotalTasks() []string {
+	var result []string
+	for _, src := range compiler.dependency.sources {
+		result = append(result, src.Name)
+	}
+	return result
+}
+
+func (compiler *CXXCompiler) getTargetName() string {
+	return compiler.dependency.targetName
 }
 
 func (compiler *CXXCompiler) DumpConfig(path string) error {

@@ -9,37 +9,50 @@ import (
 	"github.com/rizutazu/fake-compiler/util"
 )
 
-type cmakeProgressBar struct {
+type CmakeProgressBar struct {
 	targetName        string
-	onGoingTasks      map[string]bool
+	onGoingTasks      map[string]int
 	finishedTaskCount int
-	totalTaskCount    int
+	taskCount         int
 	lock              *sync.Mutex
 }
 
-func (bar *cmakeProgressBar) SetTotalTaskCount(count int) {
-	bar.totalTaskCount = count
+func (bar *CmakeProgressBar) SetTotalTasks(tasks []string) {
+	bar.taskCount = len(tasks)
 }
 
-func (bar *cmakeProgressBar) TaskStart(taskName string) {
+func (bar *CmakeProgressBar) TaskStart(task string) {
 	bar.lock.Lock()
-	bar.onGoingTasks[taskName] = true
+	_, ok := bar.onGoingTasks[task]
+	if !ok {
+		bar.onGoingTasks[task] = 1
+	} else {
+		bar.onGoingTasks[task]++
+	}
+
 	bar.finishedTaskCount++ // add count before TaskComplete so that it won't look ugly
 	fin := bar.finishedTaskCount
-	if fin == bar.totalTaskCount { // should not print 100% before epilogue
+	if fin == bar.taskCount { // should not print 100% before epilogue
 		fin -= 1
 	}
 	bar.lock.Unlock()
-	fmt.Printf("[%3v%%] \u001B[32mBuilding CXX object %s.o\u001B[0m\n", fin*100/bar.totalTaskCount, taskName)
+
+	fmt.Printf("[%3v%%] \u001B[32mBuilding CXX object %s\u001B[0m\n", fin*100/bar.taskCount, task)
 }
 
-func (bar *cmakeProgressBar) TaskComplete(taskName string) {
+func (bar *CmakeProgressBar) TaskComplete(task string) {
 	bar.lock.Lock()
-	delete(bar.onGoingTasks, taskName)
+	_, ok := bar.onGoingTasks[task]
+	if ok {
+		bar.onGoingTasks[task]--
+		if bar.onGoingTasks[task] == 0 {
+			delete(bar.onGoingTasks, task)
+		}
+	}
 	bar.lock.Unlock()
 }
 
-func (bar *cmakeProgressBar) Prologue() {
+func (bar *CmakeProgressBar) Prologue() {
 	_lines := `-- The C compiler identification is GNU 11.4.5
 -- The CXX compiler identification is GNU 11.4.5
 -- Detecting C compiler ABI info
@@ -65,26 +78,26 @@ func (bar *cmakeProgressBar) Prologue() {
 	}
 
 	for i, line := range lines {
-		time.Sleep(time.Millisecond * time.Duration(sleepTimes[i]))
 		if i == len(lines)-2 {
 			fmt.Printf(line+"\n", float64(util.Sum(sleepTimes[:i]))/1000)
 		} else {
 			fmt.Println(line)
 		}
+		time.Sleep(time.Millisecond * time.Duration(sleepTimes[i]))
 	}
 
-	time.Sleep(time.Millisecond * 420 * 2)
+	time.Sleep(time.Millisecond * 420)
 
 }
 
-func (bar *cmakeProgressBar) Epilogue() {
+func (bar *CmakeProgressBar) Epilogue() {
 	fmt.Println("[100%] Built target", bar.targetName)
 }
 
-func NewCMakeProgressBar(targetName string) ProgressBar {
-	return &cmakeProgressBar{
+func NewCMakeProgressBar(targetName string) *CmakeProgressBar {
+	return &CmakeProgressBar{
 		targetName:   targetName,
-		onGoingTasks: make(map[string]bool),
+		onGoingTasks: make(map[string]int),
 		lock:         new(sync.Mutex),
 	}
 }

@@ -24,7 +24,7 @@ var dirPath string
 var threads int
 var compilerType string
 
-// var bar string	// todo: idk
+// var bar string
 var outputPath string
 
 var rootCmd = &cobra.Command{
@@ -71,6 +71,11 @@ func parseCmd() (cc.Compiler, error) {
 	switch compilerType {
 	case "cxx":
 		c, err = cc.NewCXXCompiler(dirPath, config, t, threads)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case "cargo":
+		c, err = cc.NewCargoCompiler(dirPath, config, t, threads)
 		if err != nil {
 			log.Fatal(err)
 		}

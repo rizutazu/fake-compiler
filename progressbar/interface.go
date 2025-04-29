@@ -1,9 +1,9 @@
 package progressbar
 
 type ProgressBar interface {
-	SetTotalTaskCount(count int)
-	TaskStart(taskName string)
-	TaskComplete(taskName string)
+	SetTotalTasks(tasks []string)
+	TaskStart(task string)
+	TaskComplete(task string)
 	Prologue()
 	Epilogue()
 }

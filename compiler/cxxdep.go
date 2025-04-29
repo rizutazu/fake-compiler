@@ -19,6 +19,14 @@ type cxxSource struct {
 	Size int64  `json:"size"`
 }
 
+func (task *cxxSource) GetTaskName() string {
+	return task.Name
+}
+
+func (task *cxxSource) GetObjectNameWithPath() string {
+	return task.Path + "/" + task.Name + ".o"
+}
+
 // cxxDependency stores array of cxxSource, optionally constructs from a dir.Directory
 type cxxDependency struct {
 	constructed bool
@@ -89,6 +97,7 @@ func (dep *cxxDependency) parseDirectory(path string) error {
 	dep.targetName = filepath.Base(path)
 
 	// https://stackoverflow.com/questions/4664050/iterative-depth-first-tree-traversal-with-pre-and-post-visit-at-each-node
+	// result sort by dir
 	pre := stack.New()
 	post := stack.New()
 	pre.Push(rootDir)
@@ -117,13 +126,13 @@ func (dep *cxxDependency) parseDirectory(path string) error {
 func (dep *cxxDependency) next() (*cxxSource, error) {
 
 	if !dep.constructed {
-		return nil, errors.New("cxxDep: dependency not constructed")
+		return nil, errNotConstructed
 	}
 	if dep.cursor < len(dep.sources) {
 		dep.cursor++
 		return dep.sources[dep.cursor-1], nil
 	} else {
-		return nil, errors.New("cxxDep: no more sources")
+		return nil, errEOF
 	}
 }
 
