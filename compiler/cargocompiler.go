@@ -84,16 +84,16 @@ func (compiler *CargoCompiler) compile(pack *cargoPackage) {
 	size := util.GetRandomFromDistribution(102, 42)
 	size = max(size, 20)
 
-	timeMs := size / 0.42
+	timeMs := size / 0.2
 
 	// overhead by dependency num
 	oDep := compiler.hDep * math.Pow(math.E, -compiler.aDep*math.Pow(float64(pack.numDependencies)-compiler.x, 2)/math.Pow(compiler.x, 2))
 
 	// overhead by complete package num
-	//c := float64(compiler.project.complete)
-	//t := float64(len(compiler.project.packages))
-	//oNum := compiler.hNum * math.Pow(math.E, -compiler.aNum*math.Pow(c-t, 2)/math.Pow(t, 2))
-	timeMs *= oDep
+	c := float64(compiler.project.complete)
+	t := float64(len(compiler.project.packages))
+	oNum := compiler.hNum * math.Pow(math.E, -compiler.aNum*math.Pow(c-t, 2)/math.Pow(t, 2))
+	timeMs *= oDep * oNum
 	time.Sleep(time.Millisecond * time.Duration(timeMs))
 }
 
@@ -118,8 +118,8 @@ func (compiler *CargoCompiler) initRNGParameters() {
 	compiler.aDep = aDep
 
 	// complete package number related overhead
-	hNum := util.GetRandomUniformDistribution(math.Pow(math.E, 2), math.Pow(math.Pi, 2))
-	l = util.GetRandomUniformDistribution(math.E, math.Pi)
+	hNum := util.GetRandomUniformDistribution(math.E*2, math.Pi*2)
+	l = util.GetRandomUniformDistribution(math.SqrtE, math.SqrtPi)
 	aNum := math.Log(hNum / l)
 	compiler.hNum = hNum
 	compiler.aNum = aNum
@@ -130,6 +130,7 @@ func (compiler *CargoCompiler) Run() {
 	// init bar
 	compiler.bar = progressbar.NewCargoProgressBar(compiler.getTargetName(), true)
 	compiler.bar.SetTotalTasks(compiler.getTotalTasks())
+	compiler.bar.(*progressbar.CargoProgressBar).SetPath(compiler.project.path)
 
 	compiler.initRNGParameters()
 
@@ -163,6 +164,13 @@ func (compiler *CargoCompiler) Run() {
 }
 
 func (compiler *CargoCompiler) DumpConfig(path string) error {
-	//TODO implement me
-	panic("implement me")
+	b, err := compiler.project.dumpConfig()
+	if err != nil {
+		return err
+	}
+	err = util.DumpConfigFile(path, []byte("cargo"), b)
+	if err != nil {
+		return err
+	}
+	return nil
 }

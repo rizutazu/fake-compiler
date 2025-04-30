@@ -1,10 +1,12 @@
 package compiler
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/BurntSushi/toml"
 	"github.com/rizutazu/fake-compiler/util"
+	"math/rand"
 	"os"
 	"slices"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"sync"
 )
 
+// a single cargo package
 type cargoPackage struct {
 	name               string
 	version            string
@@ -59,12 +62,25 @@ func newCargoProject(path string, config *util.Config, sourceType SourceType) (*
 }
 
 type cargoProject struct {
-	packages    []*cargoPackage // all cargo packages, include root and dependencies
-	rootPackage *cargoPackage   // compile target package of this project
+	packages    []*cargoPackage // all cargo packages, include root and dependencies (from Cargo.lock)
+	rootPackage *cargoPackage   // root package of this project (from Cargo.toml)
+	path        string          // directory of the project, does not end with `/` except root
 	queue       []*cargoPackage // packages that can be started to compile immediately (dependency satisfied)
-	lock        *sync.Mutex
-	constructed bool // whether first batch of packages is already placed in queue
-	complete    int
+	lock        *sync.Mutex     // lock that protects complete
+	constructed bool            // whether first batch of packages is already placed in queue
+	complete    int             // commited package count
+}
+
+type configCargoPackage struct {
+	Name         string `json:"name"`
+	Version      string `json:"ver"`
+	Dependencies []int  `json:"dep"` // index in `Packages` array
+	RequiredBy   []int  `json:"req"`
+}
+type configCargoProject struct {
+	Packages    []configCargoPackage `json:"packages"`
+	RootPackage int                  `json:"root"` // index in `Packages` array
+	Path        string               `json:"path"`
 }
 
 func (project *cargoProject) parseDirectory(path string) error {
@@ -93,6 +109,7 @@ func (project *cargoProject) parseDirectory(path string) error {
 	}
 
 	// parse Cargo.toml
+	// todo: parse workspace
 	bToml, err := os.ReadFile(path + "Cargo.toml")
 	if err != nil {
 		return err
@@ -123,6 +140,10 @@ func (project *cargoProject) parseDirectory(path string) error {
 			mapping[parsedPack.name] = make(map[string]*cargoPackage)
 			mapping[parsedPack.name][parsedPack.version] = parsedPack
 		} else {
+			_, ok = mapping[parsedPack.name][parsedPack.version]
+			if ok {
+				return fmt.Errorf("malformed Cargo.lock: duplicate package %s", parsedPack.getFullName())
+			}
 			mapping[parsedPack.name][parsedPack.version] = parsedPack
 		}
 		project.packages = append(project.packages, parsedPack)
@@ -167,6 +188,10 @@ func (project *cargoProject) parseDirectory(path string) error {
 		return fmt.Errorf("malformed Cargo.lock: root package %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
 	}
 
+	rand.Shuffle(len(project.packages), func(i, j int) {
+		project.packages[i], project.packages[j] = project.packages[j], project.packages[i]
+	})
+
 	for _, parsedPack := range project.packages {
 		// packages without dependencies are append to queue
 		numDependencies := len(parsedPack.dependencies)
@@ -176,13 +201,86 @@ func (project *cargoProject) parseDirectory(path string) error {
 		}
 	}
 
+	if strings.HasSuffix(path, "/") && len(path) != 1 {
+		project.path = path[:len(path)-1]
+	}
 	project.constructed = true
 
 	return nil
 }
 
 func (project *cargoProject) parseConfig(config *util.Config) error {
-	panic("not implemented")
+	project.packages = nil
+	project.queue = nil
+	p := configCargoProject{}
+	err := json.Unmarshal(config.UncompressedContent, &p)
+	if err != nil {
+		return err
+	}
+
+	for _, cPack := range p.Packages {
+		parsedPack := cargoPackage{
+			name:               cPack.Name,
+			version:            cPack.Version,
+			stringDependencies: nil,
+			numDependencies:    len(cPack.Dependencies),
+			dependencies:       nil,
+			requiredBy:         nil,
+		}
+		project.packages = append(project.packages, &parsedPack)
+		if len(cPack.Dependencies) == 0 {
+			project.queue = append(project.queue, &parsedPack)
+		}
+	}
+	for i, parsedPack := range project.packages {
+		for _, dep := range p.Packages[i].Dependencies {
+			parsedPack.dependencies = append(parsedPack.dependencies, project.packages[dep])
+		}
+		for _, req := range p.Packages[i].RequiredBy {
+			parsedPack.requiredBy = append(parsedPack.requiredBy, project.packages[req])
+		}
+	}
+	project.rootPackage = project.packages[p.RootPackage]
+
+	rand.Shuffle(len(project.packages), func(i, j int) {
+		project.packages[i], project.packages[j] = project.packages[j], project.packages[i]
+	})
+
+	project.path = p.Path
+	project.constructed = true
+	return nil
+}
+
+func (project *cargoProject) dumpConfig() ([]byte, error) {
+	if !project.constructed {
+		return nil, errNotConstructed
+	}
+	mapping := make(map[*cargoPackage]int)
+	for i, pack := range project.packages {
+		mapping[pack] = i
+	}
+	p := configCargoProject{}
+	for _, pack := range project.packages {
+		cPack := configCargoPackage{
+			Name:    pack.name,
+			Version: pack.version,
+		}
+		for _, dependency := range pack.dependencies {
+			cPack.Dependencies = append(cPack.Dependencies, mapping[dependency])
+		}
+		for _, req := range pack.requiredBy {
+			cPack.RequiredBy = append(cPack.RequiredBy, mapping[req])
+		}
+		p.Packages = append(p.Packages, cPack)
+	}
+	p.Path = project.path
+	p.RootPackage = mapping[project.rootPackage]
+
+	b, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 // get batch of packages that can be started to compile immediately

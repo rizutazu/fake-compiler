@@ -11,8 +11,9 @@ import (
 type CargoProgressBar struct {
 	packages        []string       // name of all packages
 	rootPackage     string         // root package name
+	path            string         // project path
 	onGoingPackages map[string]int // name of packages that are compiling now
-	complete        int            // count of packages that complete the compilation
+	complete        int            // accumulative count of packages that already started the compilation
 	followNameRule  bool           // whether tasks will follow "name version" structure
 	lock            *sync.Mutex
 }
@@ -42,6 +43,9 @@ func (bar *CargoProgressBar) TaskStart(task string) {
 	if bar.complete != len(bar.packages)-1 {
 		bar.complete++
 	}
+	if task == bar.rootPackage && bar.path != "" {
+		task += " (" + bar.path + ")"
+	}
 
 	bar.renderCompiling(task)
 	bar.renderBar()
@@ -62,6 +66,10 @@ func (bar *CargoProgressBar) TaskComplete(task string) {
 	bar.renderBar()
 
 	bar.lock.Unlock()
+}
+
+func (bar *CargoProgressBar) SetPath(path string) {
+	bar.path = path
 }
 
 func (bar *CargoProgressBar) renderBar() {
@@ -101,13 +109,13 @@ func (bar *CargoProgressBar) renderBar() {
 	finishedBar += strings.Repeat(" ", 26-finBarCount)
 
 	// bar format
-	format := "\u001B[2K\u001B[36m    Building\u001B[0m [%s] %s/%s: %s...   "
+	format := "\u001B[2K\u001B[36m    Building\u001B[0m [%s] %s/%s: %s%s   "
 	fixLength := 4 + 8 + 1 + 28 + 1 + len(finishCount) + 1 + len(totalCount) + 2 + 3 + 3
 	// formatted result
 	var content string
 
 	if fixLength > width {
-		content = fmt.Sprintf(format, finishedBar, finishCount, totalCount, "")[:width]
+		content = fmt.Sprintf(format, finishedBar, finishCount, totalCount, "", "   ")[:width]
 	} else {
 		remainingSpace := width - fixLength
 		onGoingListString := strings.Builder{}
@@ -136,11 +144,13 @@ func (bar *CargoProgressBar) renderBar() {
 				break
 			}
 		}
+		threeDots := "..."
 		// pad space
 		if writtenSoFar < remainingSpace {
 			onGoingListString.WriteString(strings.Repeat(" ", remainingSpace-writtenSoFar))
+			threeDots = "   "
 		}
-		content = fmt.Sprintf(format, finishedBar, finishCount, totalCount, onGoingListString.String()[:remainingSpace])
+		content = fmt.Sprintf(format, finishedBar, finishCount, totalCount, onGoingListString.String()[:remainingSpace], threeDots)
 	}
 	util.PrintSomethingAtBottom(content)
 }

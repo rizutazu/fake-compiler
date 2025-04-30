@@ -144,7 +144,7 @@ func (dep *cxxDependency) len() int {
 func (dep *cxxDependency) dumpConfig() ([]byte, error) {
 
 	if !dep.constructed {
-		return nil, errors.New("cxxDep: not constructed")
+		return nil, errNotConstructed
 	}
 
 	r := new(rawFakeCXXDepJson)
