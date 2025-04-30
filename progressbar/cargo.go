@@ -113,28 +113,28 @@ func (bar *CargoProgressBar) renderBar() {
 		onGoingListString := strings.Builder{}
 		writtenSoFar := 0
 		i := 0
-		l := len(bar.onGoingPackages)
+		lenOnGoing := len(bar.onGoingPackages)
 		// construct "package 1, package 2, packages 3, ..., packages n" string
 		// remainingSpace := length upper bound
 		for k := range bar.onGoingPackages {
 			var taskName string
 			if bar.followNameRule {
-				l := strings.Split(k, " ")
-				taskName = l[0]
+				taskName = strings.Split(k, " ")[0]
 			} else {
 				taskName = k
 			}
 			onGoingListString.WriteString(taskName)
 			writtenSoFar += len(taskName)
-			if writtenSoFar > remainingSpace {
-				break
-			}
 
-			if i < l-1 {
+			if i < lenOnGoing-1 {
 				onGoingListString.WriteString(", ")
 				writtenSoFar += 2
 			}
 			i++
+
+			if writtenSoFar > remainingSpace {
+				break
+			}
 		}
 		// pad space
 		if writtenSoFar < remainingSpace {

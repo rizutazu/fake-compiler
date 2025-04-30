@@ -3,14 +3,13 @@ package compiler
 import (
 	"errors"
 	"fmt"
+	"github.com/BurntSushi/toml"
 	"github.com/rizutazu/fake-compiler/util"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/BurntSushi/toml"
 )
 
 type cargoPackage struct {
@@ -65,12 +64,12 @@ type cargoProject struct {
 	queue       []*cargoPackage // packages that can be started to compile immediately (dependency satisfied)
 	lock        *sync.Mutex
 	constructed bool // whether first batch of packages is already placed in queue
-	complete    bool // whether root package is returned by next()
+	complete    int
 }
 
 func (project *cargoProject) parseDirectory(path string) error {
 
-	// read Cargo.lock
+	// parse Cargo.lock
 	bLock, err := os.ReadFile(path + "Cargo.lock")
 	if err != nil {
 		return err
@@ -87,9 +86,23 @@ func (project *cargoProject) parseDirectory(path string) error {
 		Pack []rawCargoPackage `toml:"package"`
 	}
 
-	// parse file
 	var r rawCargoLock
 	err = toml.Unmarshal(bLock, &r)
+	if err != nil {
+		return err
+	}
+
+	// parse Cargo.toml
+	bToml, err := os.ReadFile(path + "Cargo.toml")
+	if err != nil {
+		return err
+	}
+
+	type rawCargoToml struct {
+		Pack rawCargoPackage `toml:"package"`
+	}
+	var t rawCargoToml
+	err = toml.Unmarshal(bToml, &t)
 	if err != nil {
 		return err
 	}
@@ -141,20 +154,20 @@ func (project *cargoProject) parseDirectory(path string) error {
 			}
 		}
 		// it is useless now
-		clear(parsedPack.stringDependencies)
+		parsedPack.stringDependencies = nil
+	}
+
+	p, ok := mapping[t.Pack.Name]
+	if !ok {
+		return fmt.Errorf("malformed Cargo.lock: root package %s not found", t.Pack.Name)
+	}
+
+	project.rootPackage, ok = p[t.Pack.Version]
+	if !ok {
+		return fmt.Errorf("malformed Cargo.lock: root package %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
 	}
 
 	for _, parsedPack := range project.packages {
-
-		// packages that required by nothing is root package
-		// assume there is only one root package in each project
-		if len(parsedPack.requiredBy) == 0 {
-			if project.rootPackage != nil {
-				return fmt.Errorf("malformed Cargo.lock: multiple root package: %s and %s\n", project.rootPackage.getFullName(), parsedPack.getFullName())
-			}
-			project.rootPackage = parsedPack
-		}
-
 		// packages without dependencies are append to queue
 		numDependencies := len(parsedPack.dependencies)
 		parsedPack.numDependencies = numDependencies
@@ -178,15 +191,11 @@ func (project *cargoProject) next() (p []*cargoPackage, err error) {
 		return nil, errNotConstructed
 	}
 	project.lock.Lock()
-	if project.complete {
+	if project.complete == len(project.packages) {
 		project.lock.Unlock()
 		return nil, errEOF
 	}
-
 	p = project.queue
-	if len(p) == 1 && p[0] == project.rootPackage {
-		project.complete = true
-	}
 	project.queue = []*cargoPackage{}
 	project.lock.Unlock()
 	return
@@ -195,6 +204,7 @@ func (project *cargoProject) next() (p []*cargoPackage, err error) {
 // commit finished package, then compute next batch of available packages
 func (project *cargoProject) commit(pack *cargoPackage) {
 	project.lock.Lock()
+	project.complete++
 	for _, p := range pack.requiredBy {
 		// hash table may have a smaller complexity here, but why not make it run slower
 		p.dependencies = slices.DeleteFunc(p.dependencies, func(c *cargoPackage) bool {

@@ -2,7 +2,6 @@ package compiler
 
 import (
 	"errors"
-	"fmt"
 	"github.com/rizutazu/fake-compiler/progressbar"
 	"github.com/rizutazu/fake-compiler/util"
 	"math"
@@ -20,9 +19,11 @@ type CargoCompiler struct {
 	threads   int
 
 	// rng related
-	a float64
-	h float64
-	x float64
+	aDep float64
+	hDep float64
+	aNum float64
+	hNum float64
+	x    float64
 }
 
 func (compiler *CargoCompiler) getTotalTasks() []string {
@@ -81,19 +82,24 @@ func (compiler *CargoCompiler) compile(pack *cargoPackage) {
 	// mean ~= 102k
 	// it looks like poisson distribution but idk how to implement
 	size := util.GetRandomFromDistribution(102, 42)
-	size = max(size, 1)
+	size = max(size, 20)
 
-	s := util.GetRandomFromDistribution(size/420, 0.1)
-	s = max(s, 0.05)
+	timeMs := size / 0.42
+
 	// overhead by dependency num
-	o := compiler.h * math.Pow(math.E, -compiler.a*math.Pow(float64(pack.numDependencies)-compiler.x, 2)/math.Pow(compiler.x, 2))
-	s *= o
+	oDep := compiler.hDep * math.Pow(math.E, -compiler.aDep*math.Pow(float64(pack.numDependencies)-compiler.x, 2)/math.Pow(compiler.x, 2))
 
-	time.Sleep(time.Millisecond * time.Duration(s*1000))
+	// overhead by complete package num
+	//c := float64(compiler.project.complete)
+	//t := float64(len(compiler.project.packages))
+	//oNum := compiler.hNum * math.Pow(math.E, -compiler.aNum*math.Pow(c-t, 2)/math.Pow(t, 2))
+	timeMs *= oDep
+	time.Sleep(time.Millisecond * time.Duration(timeMs))
 }
 
 func (compiler *CargoCompiler) initRNGParameters() {
 	// init rng stuff
+
 	// max num of dependency
 	x := 0
 	for _, pack := range compiler.project.packages {
@@ -101,15 +107,22 @@ func (compiler *CargoCompiler) initRNGParameters() {
 			x = pack.numDependencies
 		}
 	}
-	h := util.GetRandomUniformDistribution(math.Pow(math.E, 2), math.Pow(math.Pi, 2))
+	// dependency-number related overhead
+	hDep := util.GetRandomUniformDistribution(math.Pow(math.E, 2), math.Pow(math.Pi, 2))
 	// fix upper bound according to max num of dependency
-	h *= 1 - math.Pow(math.E, -0.5*(float64(x)+1))
-	fmt.Println(h)
+	hDep *= 1 - math.Pow(math.E, -0.5*(float64(x)+1))
 	l := util.GetRandomUniformDistribution(math.SqrtE, math.SqrtPi)
-	a := math.Log(h / l)
+	aDep := math.Log(hDep / l)
 	compiler.x = float64(x)
-	compiler.h = h
-	compiler.a = a
+	compiler.hDep = hDep
+	compiler.aDep = aDep
+
+	// complete package number related overhead
+	hNum := util.GetRandomUniformDistribution(math.Pow(math.E, 2), math.Pow(math.Pi, 2))
+	l = util.GetRandomUniformDistribution(math.E, math.Pi)
+	aNum := math.Log(hNum / l)
+	compiler.hNum = hNum
+	compiler.aNum = aNum
 }
 
 func (compiler *CargoCompiler) Run() {
@@ -135,8 +148,8 @@ func (compiler *CargoCompiler) Run() {
 		for _, pack := range packs {
 			compiler.wg.Add(1)
 			compiler.taskIssue <- pack
-			t := util.GetRandomFromDistribution(50, 10)
-			t = max(t, 30)
+			t := util.GetRandomFromDistribution(42, 10)
+			t = max(t, 20)
 			time.Sleep(time.Millisecond * time.Duration(t))
 		}
 	}
