@@ -61,7 +61,7 @@ func parseCmd() (cc.Compiler, error) {
 		compilerType = config.CompilerType
 		t = cc.SourceTypeConfig
 	} else {
-		dirPath, err = util.FormatPath(dirPath)
+		dirPath, err = util.FormatPathWithSlashEnding(dirPath)
 		if err != nil {
 			log.Fatal(err)
 		}

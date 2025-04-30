@@ -14,7 +14,7 @@ import (
 // This object is recommended to create by `NewDirectory()`,
 // if the object is created by `NewDirectory()`, it will not be valid and Complete == false before calling `Traverse()`
 //
-// `Path` : the absolute or relative path of the directory
+// `Path` : the full path with respect to user-provided root path (may absolute or relative)
 //
 // `SubDirs` : subdirectories
 //

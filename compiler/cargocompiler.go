@@ -34,10 +34,6 @@ func (compiler *CargoCompiler) getTotalTasks() []string {
 	return result
 }
 
-func (compiler *CargoCompiler) getTargetName() string {
-	return compiler.project.rootPackage.getFullName()
-}
-
 func NewCargoCompiler(path string, config *util.Config, sourceType SourceType, threads int) (*CargoCompiler, error) {
 	project, err := newCargoProject(path, config, sourceType)
 	if err != nil {
@@ -78,6 +74,7 @@ func (compiler *CargoCompiler) workerRun() {
 }
 
 func (compiler *CargoCompiler) compile(pack *cargoPackage) {
+	//return
 	// https://lib.rs/stats#crate-sizes
 	// mean ~= 102k
 	// it looks like poisson distribution but idk how to implement
@@ -128,9 +125,15 @@ func (compiler *CargoCompiler) initRNGParameters() {
 func (compiler *CargoCompiler) Run() {
 
 	// init bar
-	compiler.bar = progressbar.NewCargoProgressBar(compiler.getTargetName(), true)
+	compiler.bar = progressbar.NewCargoProgressBar(true)
 	compiler.bar.SetTotalTasks(compiler.getTotalTasks())
-	compiler.bar.(*progressbar.CargoProgressBar).SetPath(compiler.project.path)
+	{
+		var s []string
+		for _, pack := range compiler.project.targetPackages {
+			s = append(s, pack.getFullName())
+		}
+		compiler.bar.(*progressbar.CargoProgressBar).SetTargets(s, compiler.project.targetPaths)
+	}
 
 	compiler.initRNGParameters()
 

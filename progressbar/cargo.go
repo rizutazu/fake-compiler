@@ -9,19 +9,18 @@ import (
 )
 
 type CargoProgressBar struct {
-	packages        []string       // name of all packages
-	rootPackage     string         // root package name
-	path            string         // project path
-	onGoingPackages map[string]int // name of packages that are compiling now
-	complete        int            // accumulative count of packages that already started the compilation
-	followNameRule  bool           // whether tasks will follow "name version" structure
+	packages        []string          // name of all packages
+	targetMapping   map[string]string // {target pack: path of target pack} mapping
+	onGoingPackages map[string]int    // name of packages that are compiling now
+	complete        int               // accumulative count of packages that already started the compilation
+	followNameRule  bool              // whether tasks will follow "name version" structure
 	lock            *sync.Mutex
 }
 
 // followNameRule: whether tasks will obey "name version" structure
-func NewCargoProgressBar(rootPackage string, followNameRule bool) *CargoProgressBar {
+func NewCargoProgressBar(followNameRule bool) *CargoProgressBar {
 	bar := CargoProgressBar{}
-	bar.rootPackage = rootPackage
+	bar.targetMapping = make(map[string]string)
 	bar.onGoingPackages = make(map[string]int)
 	bar.followNameRule = followNameRule
 	bar.lock = new(sync.Mutex)
@@ -43,8 +42,10 @@ func (bar *CargoProgressBar) TaskStart(task string) {
 	if bar.complete != len(bar.packages)-1 {
 		bar.complete++
 	}
-	if task == bar.rootPackage && bar.path != "" {
-		task += " (" + bar.path + ")"
+
+	path, ok := bar.targetMapping[task]
+	if ok {
+		task += fmt.Sprintf(" (%s)", path)
 	}
 
 	bar.renderCompiling(task)
@@ -68,8 +69,10 @@ func (bar *CargoProgressBar) TaskComplete(task string) {
 	bar.lock.Unlock()
 }
 
-func (bar *CargoProgressBar) SetPath(path string) {
-	bar.path = path
+func (bar *CargoProgressBar) SetTargets(task, path []string) {
+	for i := range len(task) {
+		bar.targetMapping[task[i]] = path[i]
+	}
 }
 
 func (bar *CargoProgressBar) renderBar() {

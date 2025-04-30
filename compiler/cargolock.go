@@ -61,14 +61,15 @@ func newCargoProject(path string, config *util.Config, sourceType SourceType) (*
 	return project, nil
 }
 
+// cargoProject defines contents within a root cargo package directory (has Cargo.lock)
 type cargoProject struct {
-	packages    []*cargoPackage // all cargo packages, include root and dependencies (from Cargo.lock)
-	rootPackage *cargoPackage   // root package of this project (from Cargo.toml)
-	path        string          // directory of the project, does not end with `/` except root
-	queue       []*cargoPackage // packages that can be started to compile immediately (dependency satisfied)
-	lock        *sync.Mutex     // lock that protects complete
-	constructed bool            // whether first batch of packages is already placed in queue
-	complete    int             // commited package count
+	packages       []*cargoPackage // all cargo packages, include targets and dependencies (from Cargo.lock)
+	targetPackages []*cargoPackage // packages that are compiling targets, either root package or workspace members
+	targetPaths    []string        // path of target package, does not end with `/` except root
+	queue          []*cargoPackage // packages that can be started to compile immediately (dependency satisfied)
+	lock           *sync.Mutex     // lock that protects complete
+	constructed    bool            // whether first batch of packages is already placed in queue
+	complete       int             // commited package count
 }
 
 type configCargoPackage struct {
@@ -78,9 +79,9 @@ type configCargoPackage struct {
 	RequiredBy   []int  `json:"req"`
 }
 type configCargoProject struct {
-	Packages    []configCargoPackage `json:"packages"`
-	RootPackage int                  `json:"root"` // index in `Packages` array
-	Path        string               `json:"path"`
+	Packages       []configCargoPackage `json:"packages"`
+	TargetPackages []int                `json:"target"` // index in `Packages` array
+	Paths          []string             `json:"path"`
 }
 
 func (project *cargoProject) parseDirectory(path string) error {
@@ -108,22 +109,6 @@ func (project *cargoProject) parseDirectory(path string) error {
 		return err
 	}
 
-	// parse Cargo.toml
-	// todo: parse workspace
-	bToml, err := os.ReadFile(path + "Cargo.toml")
-	if err != nil {
-		return err
-	}
-
-	type rawCargoToml struct {
-		Pack rawCargoPackage `toml:"package"`
-	}
-	var t rawCargoToml
-	err = toml.Unmarshal(bToml, &t)
-	if err != nil {
-		return err
-	}
-
 	// {"package name": {"version1": ptr1, "version2": ptr2}} mapping
 	mapping := make(map[string]map[string]*cargoPackage)
 
@@ -142,7 +127,7 @@ func (project *cargoProject) parseDirectory(path string) error {
 		} else {
 			_, ok = mapping[parsedPack.name][parsedPack.version]
 			if ok {
-				return fmt.Errorf("malformed Cargo.lock: duplicate package %s", parsedPack.getFullName())
+				return fmt.Errorf("malformed metadata: duplicate package %s", parsedPack.getFullName())
 			}
 			mapping[parsedPack.name][parsedPack.version] = parsedPack
 		}
@@ -156,17 +141,17 @@ func (project *cargoProject) parseDirectory(path string) error {
 			if len(split) > 1 {
 				dependency, ok := mapping[split[0]][split[1]]
 				if !ok {
-					return fmt.Errorf("malformed Cargo.lock: %s not found, which is the dependency of %s", stringDependency, parsedPack.getFullName())
+					return fmt.Errorf("malformed metadata: %s not found, which is the dependency of %s", stringDependency, parsedPack.getFullName())
 				}
 				parsedPack.dependencies = append(parsedPack.dependencies, dependency)
 				dependency.requiredBy = append(dependency.requiredBy, parsedPack)
 			} else {
 				versions, ok := mapping[stringDependency]
 				if !ok {
-					return fmt.Errorf("malformed Cargo.lock: %s not found, which is the dependency of %s", stringDependency, parsedPack.getFullName())
+					return fmt.Errorf("malformed metadata: %s not found, which is the dependency of %s", stringDependency, parsedPack.getFullName())
 				}
 				if len(versions) > 1 {
-					return fmt.Errorf("malformed Cargo.lock: %s declared dependency %s, but there are multiple candidates in the file", parsedPack.getFullName(), stringDependency)
+					return fmt.Errorf("malformed metadata: %s declared dependency %s, but there are multiple candidates in the file", parsedPack.getFullName(), stringDependency)
 				}
 				for _, v := range versions {
 					parsedPack.dependencies = append(parsedPack.dependencies, v)
@@ -178,14 +163,77 @@ func (project *cargoProject) parseDirectory(path string) error {
 		parsedPack.stringDependencies = nil
 	}
 
-	p, ok := mapping[t.Pack.Name]
-	if !ok {
-		return fmt.Errorf("malformed Cargo.lock: root package %s not found", t.Pack.Name)
+	// parse Cargo.toml
+	// Cargo.toml in root {
+	//    packages alone:       root package only
+	//    packages + workspace: root package + multiple packages within workspace
+	//    workspace alone:      "virtual manifest"
+	// }
+	// todo: remove dev-dependencies
+	bToml, err := os.ReadFile(path + "Cargo.toml")
+	if err != nil {
+		return err
 	}
 
-	project.rootPackage, ok = p[t.Pack.Version]
-	if !ok {
-		return fmt.Errorf("malformed Cargo.lock: root package %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
+	type rawCargoWorkspace struct {
+		Members []string `toml:"members"`
+	}
+
+	type rawCargoToml struct {
+		Pack      rawCargoPackage   `toml:"package"`
+		Workspace rawCargoWorkspace `toml:"workspace"`
+	}
+	var t rawCargoToml
+	err = toml.Unmarshal(bToml, &t)
+	if err != nil {
+		return err
+	}
+	// has root package
+	if t.Pack.Name != "" {
+		temp, ok := mapping[t.Pack.Name]
+		if !ok {
+			return fmt.Errorf("malformed metadata: root package %s declared but not exist", t.Pack.Name)
+		}
+
+		pack, ok := temp[t.Pack.Version]
+		if !ok {
+			return fmt.Errorf("malformed metadata: root package %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
+		}
+		project.targetPackages = append(project.targetPackages, pack)
+		targetPath, err := util.FormatPathWithoutSlashEnding(path)
+		if err != nil {
+			return err
+		}
+		project.targetPaths = append(project.targetPaths, targetPath)
+	}
+	// has workspace
+	for _, member := range t.Workspace.Members {
+		bToml, err := os.ReadFile(path + member + "/Cargo.toml")
+		if err != nil {
+			return err
+		}
+		var t rawCargoToml
+		err = toml.Unmarshal(bToml, &t)
+		if err != nil {
+			return err
+		}
+
+		// no nested workspace
+		if t.Pack.Name != "" {
+			temp, ok := mapping[t.Pack.Name]
+			if !ok {
+				return fmt.Errorf("malformed metadata: workspace member %s declared but not exist", t.Pack.Name)
+			}
+
+			pack, ok := temp[t.Pack.Version]
+			if !ok {
+				return fmt.Errorf("malformed metadata: workspace member %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
+			}
+			project.targetPackages = append(project.targetPackages, pack)
+			project.targetPaths = append(project.targetPaths, path+member)
+		} else {
+			return fmt.Errorf("malformed metadata: workspace member %s has a Cargo.toml without valid information", t.Pack.Name)
+		}
 	}
 
 	rand.Shuffle(len(project.packages), func(i, j int) {
@@ -201,23 +249,19 @@ func (project *cargoProject) parseDirectory(path string) error {
 		}
 	}
 
-	if strings.HasSuffix(path, "/") && len(path) != 1 {
-		project.path = path[:len(path)-1]
-	}
 	project.constructed = true
 
 	return nil
 }
 
 func (project *cargoProject) parseConfig(config *util.Config) error {
-	project.packages = nil
-	project.queue = nil
 	p := configCargoProject{}
 	err := json.Unmarshal(config.UncompressedContent, &p)
 	if err != nil {
 		return err
 	}
 
+	// each pack
 	for _, cPack := range p.Packages {
 		parsedPack := cargoPackage{
 			name:               cPack.Name,
@@ -232,6 +276,9 @@ func (project *cargoProject) parseConfig(config *util.Config) error {
 			project.queue = append(project.queue, &parsedPack)
 		}
 	}
+
+	// restore dependency graph
+	// we assume the config is not malformed
 	for i, parsedPack := range project.packages {
 		for _, dep := range p.Packages[i].Dependencies {
 			parsedPack.dependencies = append(parsedPack.dependencies, project.packages[dep])
@@ -240,13 +287,18 @@ func (project *cargoProject) parseConfig(config *util.Config) error {
 			parsedPack.requiredBy = append(parsedPack.requiredBy, project.packages[req])
 		}
 	}
-	project.rootPackage = project.packages[p.RootPackage]
 
+	// target pack
+	for _, idx := range p.TargetPackages {
+		project.targetPackages = append(project.targetPackages, project.packages[idx])
+	}
+	project.targetPaths = p.Paths
+
+	// shuffle
 	rand.Shuffle(len(project.packages), func(i, j int) {
 		project.packages[i], project.packages[j] = project.packages[j], project.packages[i]
 	})
 
-	project.path = p.Path
 	project.constructed = true
 	return nil
 }
@@ -255,10 +307,14 @@ func (project *cargoProject) dumpConfig() ([]byte, error) {
 	if !project.constructed {
 		return nil, errNotConstructed
 	}
+
+	// {ptr: index} mapping
 	mapping := make(map[*cargoPackage]int)
 	for i, pack := range project.packages {
 		mapping[pack] = i
 	}
+
+	// each pack && dependency graph
 	p := configCargoProject{}
 	for _, pack := range project.packages {
 		cPack := configCargoPackage{
@@ -273,8 +329,12 @@ func (project *cargoProject) dumpConfig() ([]byte, error) {
 		}
 		p.Packages = append(p.Packages, cPack)
 	}
-	p.Path = project.path
-	p.RootPackage = mapping[project.rootPackage]
+
+	// target pack
+	for _, pack := range project.targetPackages {
+		p.TargetPackages = append(p.TargetPackages, mapping[pack])
+	}
+	p.Paths = project.targetPaths
 
 	b, err := json.Marshal(p)
 	if err != nil {

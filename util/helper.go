@@ -42,7 +42,7 @@ func GetRandomUniformDistribution(lower, upper float64) float64 {
 	}
 }
 
-func FormatPath(path string) (string, error) {
+func FormatPathWithSlashEnding(path string) (string, error) {
 	s, err := filepath.Abs(path)
 	if err != nil {
 		return "", err
@@ -51,6 +51,10 @@ func FormatPath(path string) (string, error) {
 		s += "/"
 	}
 	return s, nil
+}
+
+func FormatPathWithoutSlashEnding(path string) (string, error) {
+	return filepath.Abs(path)
 }
 
 func Sum(slice []int) (result int) {
