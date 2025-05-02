@@ -22,7 +22,7 @@ subcommand and acts like a summary of a directory`,
 func init() {
 	runCmd.Flags().IntVarP(&threads, "threads", "t", 16, "number of threads")
 	runCmd.Flags().StringVarP(&compilerType, "compiler", "C", "", "specified compiler type")
-	//runCmd.Flags().StringVarP(&bar, "progressbar", "p", "", "specified progressbar")
+	//runCmd.Flags().StringVarP(&barType, "progressbar", "p", "", "specified progressbar")
 	runCmd.Flags().StringVarP(&configPath, "config", "c", "", "path of compiler config")
 	runCmd.Flags().StringVarP(&dirPath, "dir", "d", "", "path of directory to compile")
 	runCmd.MarkFlagsRequiredTogether("dir", "compiler")

@@ -25,24 +25,20 @@ type cargoPackage struct {
 }
 
 func (pack *cargoPackage) String() string {
-	dep := ""
-	req := ""
-	for _, d := range pack.dependencies {
-		dep += d.name + " " + d.version + ", "
-	}
-	for _, d := range pack.requiredBy {
-		req += d.name + " " + d.version + ", "
-	}
-	return fmt.Sprintf("%s %s\n dependency: %s\n required by: %s\n", pack.name, pack.version, dep, req)
-}
-
-// getFullName := package name + " " + package version
-func (pack *cargoPackage) getFullName() string {
 	return pack.name + " " + pack.version
+	//dep := ""
+	//req := ""
+	//for _, d := range pack.dependencies {
+	//	dep += d.name + " " + d.version + ", "
+	//}
+	//for _, d := range pack.requiredBy {
+	//	req += d.name + " " + d.version + ", "
+	//}
+	//return fmt.Sprintf("%s %s\n dependency: %s\n required by: %s\n", pack.name, pack.version, dep, req)
 }
-
 func newCargoProject(path string, config *util.Config, sourceType SourceType) (*cargoProject, error) {
 	project := new(cargoProject)
+	project.targetPackages = make(map[*cargoPackage]string)
 	project.lock = new(sync.Mutex)
 	switch sourceType {
 	case SourceTypeDir:
@@ -63,13 +59,12 @@ func newCargoProject(path string, config *util.Config, sourceType SourceType) (*
 
 // cargoProject defines contents within a root cargo package directory (has Cargo.lock)
 type cargoProject struct {
-	packages       []*cargoPackage // all cargo packages, include targets and dependencies (from Cargo.lock)
-	targetPackages []*cargoPackage // packages that are compiling targets, either root package or workspace members
-	targetPaths    []string        // path of target package, does not end with `/` except root
-	queue          []*cargoPackage // packages that can be started to compile immediately (dependency satisfied)
-	lock           *sync.Mutex     // lock that protects complete
-	constructed    bool            // whether first batch of packages is already placed in queue
-	complete       int             // commited package count
+	packages       []*cargoPackage          // all cargo packages, include targets and dependencies (from Cargo.lock)
+	targetPackages map[*cargoPackage]string // packages that are compiling targets, either root package or workspace members
+	queue          []*cargoPackage          // packages that can be started to compile immediately (dependency satisfied)
+	lock           *sync.Mutex              // lock that protects complete
+	constructed    bool                     // whether first batch of packages is already placed in queue
+	complete       int                      // commited package count
 }
 
 type configCargoPackage struct {
@@ -127,37 +122,49 @@ func (project *cargoProject) parseDirectory(path string) error {
 		} else {
 			_, ok = mapping[parsedPack.name][parsedPack.version]
 			if ok {
-				return fmt.Errorf("malformed metadata: duplicate package %s", parsedPack.getFullName())
+				return fmt.Errorf("malformed metadata: duplicate package %s", parsedPack)
 			}
 			mapping[parsedPack.name][parsedPack.version] = parsedPack
 		}
 		project.packages = append(project.packages, parsedPack)
 	}
 
+	// construct dependency graph
 	for _, parsedPack := range project.packages {
-		// construct dependency graph
 		for _, stringDependency := range parsedPack.stringDependencies {
 			split := strings.Split(stringDependency, " ")
 			if len(split) > 1 {
-				dependency, ok := mapping[split[0]][split[1]]
+				// "pack ver" string
+				versions, ok := mapping[split[0]]
 				if !ok {
-					return fmt.Errorf("malformed metadata: %s not found, which is the dependency of %s", stringDependency, parsedPack.getFullName())
+					return fmt.Errorf("malformed metadata: package %s not found, which is the dependency of %s", split[0], parsedPack)
+				}
+				dependency, ok := versions[split[1]]
+				if !ok {
+					return fmt.Errorf("malformed metadata: package %s does not have version %s , which is the dependency of %s", split[0], split[1], parsedPack)
 				}
 				parsedPack.dependencies = append(parsedPack.dependencies, dependency)
 				dependency.requiredBy = append(dependency.requiredBy, parsedPack)
 			} else {
+				// "pack" string
 				versions, ok := mapping[stringDependency]
 				if !ok {
-					return fmt.Errorf("malformed metadata: %s not found, which is the dependency of %s", stringDependency, parsedPack.getFullName())
+					return fmt.Errorf("malformed metadata: %s not found, which is the dependency of %s", stringDependency, parsedPack)
 				}
 				if len(versions) > 1 {
-					return fmt.Errorf("malformed metadata: %s declared dependency %s, but there are multiple candidates in the file", parsedPack.getFullName(), stringDependency)
+					return fmt.Errorf("malformed metadata: %s declared dependency %s without version, but there are multiple candidates in the file", parsedPack, stringDependency)
 				}
 				for _, v := range versions {
 					parsedPack.dependencies = append(parsedPack.dependencies, v)
 					v.requiredBy = append(v.requiredBy, parsedPack)
 				}
 			}
+
+		}
+		parsedPack.numDependencies = len(parsedPack.dependencies)
+		// check if the result has duplicate
+		if parsedPack.numDependencies > len(util.Set(parsedPack.dependencies)) {
+			return fmt.Errorf("malformed metadata: %s has duplicate dependency", parsedPack)
 		}
 		// it is useless now
 		parsedPack.stringDependencies = nil
@@ -169,7 +176,6 @@ func (project *cargoProject) parseDirectory(path string) error {
 	//    packages + workspace: root package + multiple packages within workspace
 	//    workspace alone:      "virtual manifest"
 	// }
-	// todo: remove dev-dependencies
 	bToml, err := os.ReadFile(path + "Cargo.toml")
 	if err != nil {
 		return err
@@ -199,12 +205,11 @@ func (project *cargoProject) parseDirectory(path string) error {
 		if !ok {
 			return fmt.Errorf("malformed metadata: root package %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
 		}
-		project.targetPackages = append(project.targetPackages, pack)
 		targetPath, err := util.FormatPathWithoutSlashEnding(path)
 		if err != nil {
 			return err
 		}
-		project.targetPaths = append(project.targetPaths, targetPath)
+		project.targetPackages[pack] = targetPath
 	}
 	// has workspace
 	for _, member := range t.Workspace.Members {
@@ -229,22 +234,77 @@ func (project *cargoProject) parseDirectory(path string) error {
 			if !ok {
 				return fmt.Errorf("malformed metadata: workspace member %s exists, but version %s does not exist", t.Pack.Name, t.Pack.Version)
 			}
-			project.targetPackages = append(project.targetPackages, pack)
-			project.targetPaths = append(project.targetPaths, path+member)
+			project.targetPackages[pack] = path + member
 		} else {
 			return fmt.Errorf("malformed metadata: workspace member %s has a Cargo.toml without valid information", t.Pack.Name)
 		}
 	}
 
+	// resolve cyclic-dependency: return err if it is a normal package, else try to resolve it
+	// 1. self-dependency
+	for _, pack := range project.packages {
+		var hasDuplicate bool
+		pack.dependencies = slices.DeleteFunc(pack.dependencies, func(c *cargoPackage) bool {
+			if c == pack {
+				hasDuplicate = true
+				pack.numDependencies--
+				// extra edge introduced by dependency graph construction
+				pack.requiredBy = slices.DeleteFunc(pack.requiredBy, func(c *cargoPackage) bool {
+					return c == pack
+				})
+				return true
+			}
+			return false
+		})
+		// if the pack is not target package && has duplicate
+		if _, ok := project.targetPackages[pack]; !ok && hasDuplicate {
+			return fmt.Errorf("malformed metadata: non-target package %s has self-dependency", pack)
+		}
+	}
+	// 2. strongly connected component
+	component := util.Kosaraju(project.packages,
+		func(node *cargoPackage) []*cargoPackage {
+			return node.dependencies
+		},
+		func(node *cargoPackage) []*cargoPackage {
+			return node.requiredBy
+		})
+	targets := make([]*cargoPackage, len(project.targetPackages))
+	i := 0
+	for k := range project.targetPackages {
+		targets[i] = k
+		i++
+	}
+	for _, c := range component {
+		fmt.Println("strong: ", c)
+		// union: target packs
+		// complement: not target packs
+		union, complement := util.GetUnionAndComplement(c, targets)
+
+		// does not contain target packs ==> malformed
+		if len(union) == 0 {
+			return fmt.Errorf("malformed metadata: cyclic dependency: %s", c)
+		}
+		for _, pack := range union {
+			// N squared, gosh
+			pack.dependencies = slices.DeleteFunc(pack.dependencies, func(c *cargoPackage) bool {
+				if slices.Contains(complement, c) {
+					pack.numDependencies--
+					return true
+				}
+				return false
+			})
+		}
+	}
+
+	// shuffle
 	rand.Shuffle(len(project.packages), func(i, j int) {
 		project.packages[i], project.packages[j] = project.packages[j], project.packages[i]
 	})
 
 	for _, parsedPack := range project.packages {
 		// packages without dependencies are append to queue
-		numDependencies := len(parsedPack.dependencies)
-		parsedPack.numDependencies = numDependencies
-		if numDependencies == 0 {
+		if parsedPack.numDependencies == 0 {
 			project.queue = append(project.queue, parsedPack)
 		}
 	}
@@ -289,10 +349,9 @@ func (project *cargoProject) parseConfig(config *util.Config) error {
 	}
 
 	// target pack
-	for _, idx := range p.TargetPackages {
-		project.targetPackages = append(project.targetPackages, project.packages[idx])
+	for i, idx := range p.TargetPackages {
+		project.targetPackages[project.packages[idx]] = p.Paths[i]
 	}
-	project.targetPaths = p.Paths
 
 	// shuffle
 	rand.Shuffle(len(project.packages), func(i, j int) {
@@ -331,10 +390,12 @@ func (project *cargoProject) dumpConfig() ([]byte, error) {
 	}
 
 	// target pack
-	for _, pack := range project.targetPackages {
+	var paths []string
+	for pack, path := range project.targetPackages {
+		paths = append(paths, path)
 		p.TargetPackages = append(p.TargetPackages, mapping[pack])
 	}
-	p.Paths = project.targetPaths
+	p.Paths = paths
 
 	b, err := json.Marshal(p)
 	if err != nil {

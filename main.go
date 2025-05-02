@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/rizutazu/fake-compiler/progressbar"
 	"log"
 
 	cc "github.com/rizutazu/fake-compiler/compiler"
@@ -24,7 +25,7 @@ var dirPath string
 var threads int
 var compilerType string
 
-// var bar string
+var barType string
 var outputPath string
 
 var rootCmd = &cobra.Command{
@@ -50,6 +51,7 @@ func main() {
 
 func parseCmd() (cc.Compiler, error) {
 	var c cc.Compiler
+	var bar progressbar.ProgressBar
 	var config *util.Config
 	var t cc.SourceType
 	var err error
@@ -82,5 +84,18 @@ func parseCmd() (cc.Compiler, error) {
 	default:
 		log.Fatalf("unknown compiler type %s\n", compilerType)
 	}
+
+	if barType == "" {
+		barType = compilerType
+	}
+	switch barType {
+	case "cxx":
+		bar = progressbar.NewCMakeProgressBar()
+	case "cargo":
+		bar = progressbar.NewCargoProgressBar()
+	default:
+		log.Fatalf("unknown bar type %s\n", barType)
+	}
+	c.SetProgressBar(bar)
 	return c, nil
 }

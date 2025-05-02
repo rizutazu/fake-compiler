@@ -26,14 +26,6 @@ type CargoCompiler struct {
 	x    float64
 }
 
-func (compiler *CargoCompiler) getTotalTasks() []string {
-	var result []string
-	for _, pack := range compiler.project.packages {
-		result = append(result, pack.getFullName())
-	}
-	return result
-}
-
 func NewCargoCompiler(path string, config *util.Config, sourceType SourceType, threads int) (*CargoCompiler, error) {
 	project, err := newCargoProject(path, config, sourceType)
 	if err != nil {
@@ -56,7 +48,7 @@ func (compiler *CargoCompiler) handleCommit() {
 			break
 		}
 		compiler.project.commit(pack)
-		compiler.bar.TaskComplete(pack.getFullName())
+		compiler.bar.TaskComplete(pack.String())
 		compiler.wg.Done()
 	}
 }
@@ -67,14 +59,13 @@ func (compiler *CargoCompiler) workerRun() {
 		if !ok {
 			break
 		}
-		compiler.bar.TaskStart(pack.getFullName())
+		compiler.bar.TaskStart(pack.String())
 		compiler.compile(pack)
 		compiler.commit <- pack
 	}
 }
 
 func (compiler *CargoCompiler) compile(pack *cargoPackage) {
-	//return
 	// https://lib.rs/stats#crate-sizes
 	// mean ~= 102k
 	// it looks like poisson distribution but idk how to implement
@@ -124,17 +115,6 @@ func (compiler *CargoCompiler) initRNGParameters() {
 
 func (compiler *CargoCompiler) Run() {
 
-	// init bar
-	compiler.bar = progressbar.NewCargoProgressBar(true)
-	compiler.bar.SetTotalTasks(compiler.getTotalTasks())
-	{
-		var s []string
-		for _, pack := range compiler.project.targetPackages {
-			s = append(s, pack.getFullName())
-		}
-		compiler.bar.(*progressbar.CargoProgressBar).SetTargets(s, compiler.project.targetPaths)
-	}
-
 	compiler.initRNGParameters()
 
 	for range compiler.threads {
@@ -164,6 +144,27 @@ func (compiler *CargoCompiler) Run() {
 
 	close(compiler.taskIssue)
 	close(compiler.commit)
+}
+
+func (compiler *CargoCompiler) SetProgressBar(bar progressbar.ProgressBar) {
+	compiler.bar = bar
+
+	var totalTasks []string
+	for _, pack := range compiler.project.packages {
+		totalTasks = append(totalTasks, pack.String())
+	}
+	compiler.bar.SetTotalTasks(totalTasks)
+
+	asCargo, ok := compiler.bar.(*progressbar.CargoProgressBar)
+	if ok {
+		mapping := make(map[string]string)
+		for pack, path := range compiler.project.targetPackages {
+			mapping[pack.String()] = path
+		}
+		asCargo.SetTargets(mapping)
+		asCargo.SetFollowNameRule()
+	}
+
 }
 
 func (compiler *CargoCompiler) DumpConfig(path string) error {

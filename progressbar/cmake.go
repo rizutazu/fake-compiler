@@ -30,11 +30,10 @@ func (bar *CmakeProgressBar) TaskStart(task string) {
 		bar.onGoingTasks[task]++
 	}
 
-	bar.finishedTaskCount++ // add count before TaskComplete so that it won't look ugly
-	fin := bar.finishedTaskCount
-	if fin == bar.taskCount { // should not print 100% before epilogue
-		fin -= 1
+	if bar.finishedTaskCount != bar.taskCount-1 { // should not print 100% before epilogue
+		bar.finishedTaskCount++ // add count before TaskComplete so that it won't look ugly
 	}
+	fin := bar.finishedTaskCount
 	bar.lock.Unlock()
 
 	fmt.Printf("[%3v%%] \u001B[32mBuilding CXX object %s\u001B[0m\n", fin*100/bar.taskCount, task)
@@ -94,9 +93,12 @@ func (bar *CmakeProgressBar) Epilogue() {
 	fmt.Println("[100%] Built target", bar.targetName)
 }
 
-func NewCMakeProgressBar(targetName string) *CmakeProgressBar {
+func (bar *CmakeProgressBar) SetTargetName(name string) {
+	bar.targetName = name
+}
+
+func NewCMakeProgressBar() *CmakeProgressBar {
 	return &CmakeProgressBar{
-		targetName:   targetName,
 		onGoingTasks: make(map[string]int),
 		lock:         new(sync.Mutex),
 	}

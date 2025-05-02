@@ -18,11 +18,10 @@ type CargoProgressBar struct {
 }
 
 // followNameRule: whether tasks will obey "name version" structure
-func NewCargoProgressBar(followNameRule bool) *CargoProgressBar {
+func NewCargoProgressBar() *CargoProgressBar {
 	bar := CargoProgressBar{}
 	bar.targetMapping = make(map[string]string)
 	bar.onGoingPackages = make(map[string]int)
-	bar.followNameRule = followNameRule
 	bar.lock = new(sync.Mutex)
 	return &bar
 }
@@ -69,10 +68,12 @@ func (bar *CargoProgressBar) TaskComplete(task string) {
 	bar.lock.Unlock()
 }
 
-func (bar *CargoProgressBar) SetTargets(task, path []string) {
-	for i := range len(task) {
-		bar.targetMapping[task[i]] = path[i]
-	}
+func (bar *CargoProgressBar) SetTargets(mapping map[string]string) {
+	bar.targetMapping = mapping
+}
+
+func (bar *CargoProgressBar) SetFollowNameRule() {
+	bar.followNameRule = true
 }
 
 func (bar *CargoProgressBar) renderBar() {

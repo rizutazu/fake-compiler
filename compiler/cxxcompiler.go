@@ -19,7 +19,8 @@ type CXXCompiler struct {
 	threads    int
 
 	// progress bar
-	bar progressbar.ProgressBar
+	bar             progressbar.ProgressBar
+	useFullTaskName bool
 }
 
 func NewCXXCompiler(path string, config *util.Config, sourceType SourceType, threads int) (*CXXCompiler, error) {
@@ -51,8 +52,7 @@ func (compiler *CXXCompiler) handleCommit() {
 		if !ok {
 			break
 		}
-		_, ok = compiler.bar.(*progressbar.CmakeProgressBar)
-		if ok {
+		if compiler.useFullTaskName {
 			compiler.bar.TaskComplete(source.Path + "/" + source.Name + ".o")
 		} else {
 			compiler.bar.TaskComplete(source.Name)
@@ -69,13 +69,13 @@ func (compiler *CXXCompiler) workerRun() {
 		if !ok {
 			break
 		}
-		_, ok = compiler.bar.(*progressbar.CmakeProgressBar)
-		if ok {
+		if compiler.useFullTaskName {
 			compiler.bar.TaskStart(source.Path + "/" + source.Name + ".o")
 		} else {
 			compiler.bar.TaskStart(source.Name)
 		}
 		compiler.compileCode(source)
+
 		compiler.commit <- source
 	}
 }
@@ -111,10 +111,6 @@ func (compiler *CXXCompiler) Run() {
 	// wait all tasks finish ──> terminate: close chan                    ║
 	//                                     ╚══════════════════════════════╝
 
-	bar := progressbar.NewCMakeProgressBar(compiler.getTargetName())
-	bar.SetTotalTasks(compiler.getTotalTasks())
-	compiler.bar = bar
-
 	for range compiler.threads {
 		go compiler.workerRun()
 	}
@@ -141,12 +137,19 @@ func (compiler *CXXCompiler) Run() {
 	compiler.bar.Epilogue()
 }
 
-func (compiler *CXXCompiler) getTotalTasks() []string {
-	var result []string
+func (compiler *CXXCompiler) SetProgressBar(bar progressbar.ProgressBar) {
+	compiler.bar = bar
+	var totalTasks []string
 	for _, src := range compiler.dependency.sources {
-		result = append(result, src.Name)
+		totalTasks = append(totalTasks, src.Name)
 	}
-	return result
+	bar.SetTotalTasks(totalTasks)
+	asCmake, ok := compiler.bar.(*progressbar.CmakeProgressBar)
+	if ok {
+		asCmake.SetTargetName(compiler.dependency.targetName)
+		compiler.useFullTaskName = true
+	}
+
 }
 
 func (compiler *CXXCompiler) getTargetName() string {
