@@ -2,11 +2,12 @@ package compiler
 
 import (
 	"errors"
-	"github.com/rizutazu/fake-compiler/progressbar"
-	"github.com/rizutazu/fake-compiler/util"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/rizutazu/fake-compiler/progressbar"
+	"github.com/rizutazu/fake-compiler/util"
 )
 
 type CargoCompiler struct {
@@ -102,7 +103,7 @@ func (compiler *CargoCompiler) initRNGParameters() {
 			x = pack.numDependencies
 		}
 		if len(pack.requiredBy) > r {
-			r = pack.numDependencies
+			r = len(pack.requiredBy)
 		}
 	}
 	// dependency-number related overhead

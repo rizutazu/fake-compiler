@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/BurntSushi/toml"
-	"github.com/rizutazu/fake-compiler/util"
 	"math/rand"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/BurntSushi/toml"
+	"github.com/rizutazu/fake-compiler/util"
 )
 
 // a single cargo package
@@ -25,7 +26,7 @@ type cargoPackage struct {
 }
 
 func (pack *cargoPackage) String() string {
-	return pack.name + " " + pack.version
+	return pack.name + " v" + pack.version
 	//dep := ""
 	//req := ""
 	//for _, d := range pack.dependencies {
