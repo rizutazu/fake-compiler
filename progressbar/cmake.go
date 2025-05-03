@@ -65,7 +65,7 @@ func (bar *CmakeProgressBar) Prologue() {
 -- Detecting CXX compile features
 -- Detecting CXX compile features - done
 -- Configuring done (%.1fs)
--- Generating done (0.0s)`
+-- Generating done (%.1fs)`
 
 	lines := strings.Split(_lines, "\n")
 
@@ -79,6 +79,8 @@ func (bar *CmakeProgressBar) Prologue() {
 	for i, line := range lines {
 		if i == len(lines)-2 {
 			fmt.Printf(line+"\n", float64(util.Sum(sleepTimes[:i]))/1000)
+		} else if i == len(lines)-1 {
+			fmt.Printf(line+"\n", float64(sleepTimes[i])/1000)
 		} else {
 			fmt.Println(line)
 		}

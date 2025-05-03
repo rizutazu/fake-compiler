@@ -2,8 +2,7 @@
 
 Pretend as if something is compiling or busying in your terminal.
 
-<img src="assets/image.png" alt="alt text" style="zoom: 33%;" />
-
+<img src="assets/image.png" alt="alt text" style="zoom: 33%;" /><img src="assets/image2.png" alt="alt text" style="zoom: 33%;" />
 
 ## Usage
 
@@ -29,11 +28,15 @@ Optional flag: `-p bar`: specify the style of progress bar/compiling logs
 
 ### Generate config file: `gen` subcommand
 You can generate config file by `fake-compiler gen -C compiler_type -d path_to_compile -o output_file`
-  - The generated file is bound to specified compiler type
+  - The generated file is bound to how specified compiler interprets the directory
 
 
-### Example config file
-This repository is shipped with an example config file, placed at `examples/linux-6.12.17_cxx`, generated over linux 6.12.17 source code with `cxx` compiler_type. Try it out (need Go environment): `go run . run -c examples/linux-6.12.17_cxx`
+## Example config files
+This repository is shipped with two example config files, placed at `examples/` directory:
+ - `examples/linux-6.12.17_cxx`: linux 6.12.17 source code
+ - `examples/router_cargo`: [Apollo Router Core](https://github.com/apollographql/router)
+
+Try it out (need Go environment): `go run . run -c examples/linux-6.12.17_cxx`
 
 
 
