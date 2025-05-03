@@ -167,8 +167,6 @@ func (bar *CargoProgressBar) renderCompiling(name string) {
 func (bar *CargoProgressBar) Prologue() {
 	// todo: update crates.io
 	// todo: download packages
-
-	//panic("implement me")
 }
 
 func (bar *CargoProgressBar) Epilogue() {

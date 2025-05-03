@@ -158,10 +158,10 @@ func (compiler *CargoCompiler) Run() {
 
 	compiler.wg.Wait()
 
-	compiler.bar.Epilogue()
-
 	close(compiler.taskIssue)
 	close(compiler.commit)
+
+	compiler.bar.Epilogue()
 }
 
 func (compiler *CargoCompiler) SetProgressBar(bar progressbar.ProgressBar) {
