@@ -9,7 +9,8 @@ import (
 	"sync"
 )
 
-var lock *sync.Mutex = new(sync.Mutex)
+// rand source is unsafe in concurrency
+var lock = new(sync.Mutex)
 
 func GetRandomFromDistribution(mean, sd float64) float64 {
 	return GetRandomNormalDistribution()*sd + mean
@@ -19,11 +20,10 @@ func GetRandomNormalDistribution() float64 {
 	lock.Lock()
 	r1 := rand.Float64()
 	r2 := rand.Float64()
+	lock.Unlock()
 	if r1 == 0 || r2 == 0 {
-		lock.Unlock()
 		return GetRandomNormalDistribution()
 	}
-	lock.Unlock()
 	return math.Sqrt(-2*math.Log(r1)) * math.Cos(2*math.Pi*r2)
 }
 

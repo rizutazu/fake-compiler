@@ -12,7 +12,7 @@ import (
 // Directory stores information about file architecture
 //
 // This object is recommended to create by `NewDirectory()`,
-// if the object is created by `NewDirectory()`, it will not be valid and Complete == false before calling `Traverse()`
+// if the object is created by `NewDirectory()`, it will not be valid (Complete == false) before calling `Traverse()`
 //
 // `Path` : the full path with respect to user-provided root path (may absolute or relative)
 //
@@ -87,12 +87,12 @@ func (directory *Directory) Traverse() error {
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go directory.__traverse(directory.Path, &wg)
+	go directory.traverse(directory.Path, &wg)
 	wg.Wait()
 	return nil
 }
 
-func (directory *Directory) __traverse(path string, wg *sync.WaitGroup) {
+func (directory *Directory) traverse(path string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	clear(directory.SubDirs)
@@ -112,9 +112,9 @@ func (directory *Directory) __traverse(path string, wg *sync.WaitGroup) {
 			directory.SubDirs = append(directory.SubDirs, subDir)
 			wg.Add(1)
 			if path[len(path)-1] == '/' {
-				go subDir.__traverse(path+file.Name(), wg)
+				go subDir.traverse(path+file.Name(), wg)
 			} else {
-				go subDir.__traverse(path+"/"+file.Name(), wg)
+				go subDir.traverse(path+"/"+file.Name(), wg)
 			}
 		} else {
 			if directory.filenameFilter == nil || (directory.filenameFilter != nil && directory.filenameFilter.Match([]byte(file.Name()))) {

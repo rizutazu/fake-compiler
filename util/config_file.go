@@ -57,6 +57,7 @@ func ParseConfigFile(path string) (*Config, error) {
 	}, nil
 }
 
+// dump as config file
 func DumpConfigFile(path string, compilerType []byte, uncompressedContent []byte) error {
 	// open file
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)

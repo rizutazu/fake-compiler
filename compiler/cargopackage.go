@@ -240,7 +240,8 @@ func (project *cargoProject) parseDirectory(path string) error {
 		}
 	}
 
-	// resolve cyclic-dependency: return err if it is a normal package, else try to resolve it
+	// resolve cyclic-dependency, introduced by cargo "dev-dependencies"
+	// if it is a normal package, return err, otherwise try to resolve it: delete dependencies in target package
 	// 1. self-dependency
 	for _, pack := range project.packages {
 		var hasDuplicate bool
@@ -258,7 +259,7 @@ func (project *cargoProject) parseDirectory(path string) error {
 		})
 		// if the pack is not target package && has duplicate
 		if _, ok := project.targetPackages[pack]; !ok && hasDuplicate {
-			return fmt.Errorf("malformed metadata: non-target package %s has self-dependency", pack)
+			return fmt.Errorf("malformed metadata: package %s has self-dependency", pack)
 		}
 	}
 	// 2. strongly connected component
@@ -276,7 +277,6 @@ func (project *cargoProject) parseDirectory(path string) error {
 		i++
 	}
 	for _, c := range component {
-		fmt.Println("strong: ", c)
 		// union: target packs
 		// complement: not target packs
 		union, complement := util.GetUnionAndComplement(c, targets)

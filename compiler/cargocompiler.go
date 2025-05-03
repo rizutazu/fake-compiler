@@ -19,11 +19,16 @@ type CargoCompiler struct {
 	threads   int
 
 	// rng related
-	aDep float64
+
 	hDep float64
-	aNum float64
-	hNum float64
+	aDep float64
 	x    float64
+	hReq float64
+	aReq float64
+	r    float64
+
+	hNum float64
+	aNum float64
 }
 
 func NewCargoCompiler(path string, config *util.Config, sourceType SourceType, threads int) (*CargoCompiler, error) {
@@ -72,16 +77,17 @@ func (compiler *CargoCompiler) compile(pack *cargoPackage) {
 	size := util.GetRandomFromDistribution(102, 42)
 	size = max(size, 20)
 
-	timeMs := size / 0.2
+	timeMs := size / 0.42
 
 	// overhead by dependency num
 	oDep := compiler.hDep * math.Pow(math.E, -compiler.aDep*math.Pow(float64(pack.numDependencies)-compiler.x, 2)/math.Pow(compiler.x, 2))
+	oReq := compiler.hReq * math.Pow(math.E, -compiler.aReq*math.Pow(float64(len(pack.requiredBy))-compiler.r, 2)/math.Pow(compiler.r, 2))
 
 	// overhead by complete package num
 	c := float64(compiler.project.complete)
 	t := float64(len(compiler.project.packages))
 	oNum := compiler.hNum * math.Pow(math.E, -compiler.aNum*math.Pow(c-t, 2)/math.Pow(t, 2))
-	timeMs *= oDep * oNum
+	timeMs *= oDep * oNum * oReq
 	time.Sleep(time.Millisecond * time.Duration(timeMs))
 }
 
@@ -90,9 +96,13 @@ func (compiler *CargoCompiler) initRNGParameters() {
 
 	// max num of dependency
 	x := 0
+	r := 0
 	for _, pack := range compiler.project.packages {
 		if pack.numDependencies > x {
 			x = pack.numDependencies
+		}
+		if len(pack.requiredBy) > r {
+			r = pack.numDependencies
 		}
 	}
 	// dependency-number related overhead
@@ -104,6 +114,14 @@ func (compiler *CargoCompiler) initRNGParameters() {
 	compiler.x = float64(x)
 	compiler.hDep = hDep
 	compiler.aDep = aDep
+
+	hReq := util.GetRandomUniformDistribution(math.E, math.Pi)
+	hReq *= 1 - math.Pow(math.E, -0.5*(float64(r)+1))
+	l = util.GetRandomUniformDistribution(math.SqrtE, math.SqrtPi)
+	aReq := math.Log(hReq / l)
+	compiler.r = float64(r)
+	compiler.hReq = hReq
+	compiler.aReq = aReq
 
 	// complete package number related overhead
 	hNum := util.GetRandomUniformDistribution(math.E*2, math.Pi*2)

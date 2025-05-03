@@ -1,6 +1,6 @@
 package util
 
-// get the set from an array
+// get the set(unique elements) of an array
 func Set[T comparable](slice []T) (result []T) {
 	m := make(map[T]bool)
 	for _, element := range slice {
