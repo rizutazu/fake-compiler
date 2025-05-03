@@ -42,5 +42,5 @@ Try it out (need Go environment): `go run . run -c examples/linux-6.12.17_cxx`
 
 ## Build
 
-1. Setup Go environment, minimal version required: 1.22
+1. Setup Go environment, minimal version required: 1.23.0
 2. Run `make build` 
