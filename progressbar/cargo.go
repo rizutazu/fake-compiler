@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"github.com/rizutazu/fake-compiler/util"
 	"golang.org/x/term"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type CargoProgressBar struct {
@@ -14,6 +16,7 @@ type CargoProgressBar struct {
 	onGoingPackages map[string]int    // name of packages that are compiling now
 	complete        int               // accumulative count of packages that already started the compilation
 	followNameRule  bool              // whether tasks will follow "name version" structure
+	startTime       *time.Time
 	lock            *sync.Mutex
 }
 
@@ -40,6 +43,10 @@ func (bar *CargoProgressBar) TaskStart(task string) {
 	}
 	if bar.complete != len(bar.packages)-1 {
 		bar.complete++
+	}
+	if bar.startTime == nil {
+		t := time.Now()
+		bar.startTime = &t
 	}
 
 	path, ok := bar.targetMapping[task]
@@ -170,5 +177,40 @@ func (bar *CargoProgressBar) Prologue() {
 }
 
 func (bar *CargoProgressBar) Epilogue() {
-	fmt.Printf("\u001B[2K\u001B[1;32m    Finished\u001B[0m `release` profile [optimized] target(s) in 0.0s\n")
+	var elapsed string
+	if bar.startTime != nil {
+		elapsed = bar.formatTime()
+	} else {
+		elapsed = "0.0s"
+	}
+	fmt.Printf("\u001B[2K\u001B[1;32m    Finished\u001B[0m `release` profile [optimized] target(s) in %s\n", elapsed)
+}
+
+func (bar *CargoProgressBar) formatTime() string {
+	elapsed := time.Since(*bar.startTime)
+
+	// time exceeds 60s flag
+	flag := false
+
+	s := strings.Builder{}
+	if h := int(elapsed.Hours()); h >= 1 {
+		s.WriteString(strconv.Itoa(h))
+		s.WriteString("h ")
+	}
+	if m := int(elapsed.Minutes()); m >= 1 {
+		m = m % 60
+		s.WriteString(strconv.Itoa(m))
+		s.WriteString("m ")
+		flag = true
+	}
+	if flag {
+		sec := int(elapsed.Seconds()) % 60
+		s.WriteString(fmt.Sprintf("%02d", sec))
+		s.WriteString("s")
+	} else {
+		sec := elapsed.Seconds()
+		s.WriteString(fmt.Sprintf("%.2f", sec))
+		s.WriteString("s")
+	}
+	return s.String()
 }
