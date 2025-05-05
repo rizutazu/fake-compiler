@@ -41,9 +41,6 @@ func (bar *CargoProgressBar) TaskStart(task string) {
 	} else {
 		bar.onGoingPackages[task]++
 	}
-	if bar.complete != len(bar.packages)-1 {
-		bar.complete++
-	}
 	if bar.startTime == nil {
 		t := time.Now()
 		bar.startTime = &t
@@ -69,6 +66,7 @@ func (bar *CargoProgressBar) TaskComplete(task string) {
 			delete(bar.onGoingPackages, task)
 		}
 	}
+	bar.complete++
 
 	bar.renderBar()
 
@@ -177,6 +175,7 @@ func (bar *CargoProgressBar) Prologue() {
 }
 
 func (bar *CargoProgressBar) Epilogue() {
+	util.PrintSomethingAtBottom("") // clear progress bar at ending
 	var elapsed string
 	if bar.startTime != nil {
 		elapsed = bar.formatTime()

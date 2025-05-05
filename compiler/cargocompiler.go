@@ -107,7 +107,7 @@ func (compiler *CargoCompiler) initRNGParameters() {
 		}
 	}
 	// dependency-number related overhead
-	hDep := util.GetRandomUniformDistribution(math.Pow(math.E, 2), math.Pow(math.Pi, 2))
+	hDep := util.GetRandomUniformDistribution(math.E, math.Pi)
 	// fix upper bound according to max num of dependency
 	hDep *= 1 - math.Pow(math.E, -0.5*(float64(x)+1))
 	l := util.GetRandomUniformDistribution(math.SqrtE, math.SqrtPi)
@@ -125,7 +125,7 @@ func (compiler *CargoCompiler) initRNGParameters() {
 	compiler.aReq = aReq
 
 	// complete package number related overhead
-	hNum := util.GetRandomUniformDistribution(math.E*2, math.Pi*2)
+	hNum := util.GetRandomUniformDistribution(math.E, math.Pi)
 	l = util.GetRandomUniformDistribution(math.SqrtE, math.SqrtPi)
 	aNum := math.Log(hNum / l)
 	compiler.hNum = hNum
