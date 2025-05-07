@@ -1,6 +1,6 @@
 package util
 
-// Kosaraju's algorithm, the return value only contain components that have more than one node
+// Kosaraju's algorithm, the return value only contains components that have more than one nodes
 func Kosaraju[T comparable](nodes []T, getInNeighbours, getOutNeighbours func(node T) []T) (result [][]T) {
 
 	// https://en.wikipedia.org/wiki/Kosaraju%27s_algorithm

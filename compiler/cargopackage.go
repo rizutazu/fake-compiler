@@ -289,8 +289,13 @@ func (project *cargoProject) parseDirectory(path string) error {
 		for _, pack := range union {
 			// N squared, gosh
 			pack.dependencies = slices.DeleteFunc(pack.dependencies, func(c *cargoPackage) bool {
+				// delete packages in union(complement, pack.dependencies) := c
 				if slices.Contains(complement, c) {
 					pack.numDependencies--
+					// delete dual edge
+					c.requiredBy = slices.DeleteFunc(c.requiredBy, func(c2 *cargoPackage) bool {
+						return c2 == pack
+					})
 					return true
 				}
 				return false
